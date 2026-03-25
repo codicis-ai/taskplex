@@ -1,0 +1,71 @@
+{
+  "version": "2.0.0",
+  "qualityProfiles": {
+    "lean": {
+      "requiredGates": [],
+      "optionalGates": ["tests", "lint"],
+      "skipHardening": true,
+      "autoCommit": true
+    },
+    "standard": {
+      "requiredGates": ["tests", "lint", "security", "closure", "codeReview", "compliance"],
+      "optionalGates": ["typeCheck", "database", "e2e", "userWorkflow"],
+      "skipHardening": false,
+      "autoCommit": false
+    },
+    "enterprise": {
+      "requiredGates": ["tests", "lint", "typeCheck", "security", "closure", "codeReview", "compliance", "hardening", "readiness"],
+      "optionalGates": ["database", "e2e", "userWorkflow", "dependencyCompliance", "migrationSafety", "operability"],
+      "skipHardening": false,
+      "autoCommit": false,
+      "requireReview": true
+    }
+  },
+  "limits": {
+    "buildFixRounds": 3,
+    "reviewResubmissions": 3,
+    "validationPipelineRuns": 3,
+    "prdFeatureAttemptsAutonomous": 2
+  },
+  "executionModes": {
+    "standard": {
+      "maxFiles": 20,
+      "maxTurns": 25,
+      "agents": ["planning-agent", "implementation-agent"]
+    },
+    "team": {
+      "maxFiles": null,
+      "maxTurns": 25,
+      "agents": ["planning-agent", "implementation-agent"]
+    },
+    "blueprint": {
+      "maxFiles": null,
+      "maxTurns": 30,
+      "agents": ["architect", "implementation-agent", "researcher"]
+    }
+  },
+  "legacyModeMapping": {
+    "single": "standard",
+    "parallel": "team",
+    "architect": "blueprint",
+    "prd": "blueprint"
+  },
+  "designDepth": {
+    "light": {
+      "maxConventionQuestions": 0,
+      "maxIntentQuestions": 2,
+      "brainstormApproaches": false
+    },
+    "full": {
+      "maxConventionQuestions": 4,
+      "maxIntentQuestions": null,
+      "brainstormApproaches": true
+    }
+  },
+  "hardening": {
+    "minReadinessScore": {
+      "standard": 50,
+      "enterprise": 70
+    }
+  }
+}

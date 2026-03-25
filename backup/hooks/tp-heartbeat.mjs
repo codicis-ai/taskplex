@@ -1,0 +1,199 @@
+#!/usr/bin/env node
+/**
+ * TaskPlex Heartbeat Hook (PostToolUse: Edit|Write)
+ *
+ * Fires on every file edit/write. Responsibilities:
+ *   - Track modified files in manifest.modifiedFiles[]
+ *   - Increment toolCallCount + track by type
+ *   - Auto-promote phase based on artifact detection
+ *   - Update lastUpdated timestamp
+ *   - Render progress.md from manifest.progressNotes[]
+ *   - Compaction guard (token estimation warning)
+ */
+
+import { pathToFileURL, fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const {
+  parseStdin, normalizeCwd, findSessionTask, findProjectRoot,
+  getPhaseNumber, isSourceFile, detectFileState,
+  callRuntime, isRuntimeAvailable
+} = await import(pathToFileURL(join(__dirname, 'hook-utils.mjs')).href);
+
+import fs from 'fs';
+import path from 'path';
+
+const HEARTBEAT_INTERVAL = 5;
+
+async function main() {
+  try {
+    const hookInput = await parseStdin();
+    const cwd = normalizeCwd(hookInput);
+    const toolName = hookInput.tool_name || 'unknown';
+
+    const task = findSessionTask(cwd);
+    if (!task) { process.exit(0); }
+
+    const { taskPath, manifest } = task;
+    const manifestPath = path.join(taskPath, 'manifest.json');
+
+    if (manifest.status === 'completed' || manifest.status === 'cancelled') {
+      process.exit(0);
+    }
+
+    // === Track modified file ===
+    const editedFile = hookInput.tool_input?.file_path || hookInput.tool_input?.path || null;
+    if (editedFile) {
+      if (!manifest.modifiedFiles) manifest.modifiedFiles = [];
+      const normalized = editedFile.replace(/\\/g, '/');
+      if (!manifest.modifiedFiles.includes(normalized)) {
+        manifest.modifiedFiles.push(normalized);
+      }
+    }
+
+    // === Increment tool call counter ===
+    if (typeof manifest.toolCallCount !== 'number') manifest.toolCallCount = 0;
+    manifest.toolCallCount++;
+    if (!manifest.toolCallsByType) manifest.toolCallsByType = {};
+    manifest.toolCallsByType[toolName] = (manifest.toolCallsByType[toolName] || 0) + 1;
+
+    // === Auto-promote phase ===
+    const { derivedPhase } = detectFileState(taskPath);
+    if (derivedPhase) {
+      const currentPhaseNum = getPhaseNumber(manifest.phase);
+      const derivedPhaseNum = getPhaseNumber(derivedPhase);
+
+      if (derivedPhaseNum > currentPhaseNum) {
+        const runtimeUp = isRuntimeAvailable();
+        let transitionAllowed = true;
+
+        if (runtimeUp && manifest.runtimeSessionId) {
+          const transResult = await callRuntime('phase.request_transition', {
+            task_id: manifest.taskId,
+            from_phase: manifest.phase,
+            to_phase: derivedPhase,
+            evidence: null
+          });
+
+          if (transResult.ok) {
+            transitionAllowed = transResult.result.allowed;
+          }
+        }
+
+        if (transitionAllowed) {
+          manifest.phase = derivedPhase;
+        }
+      }
+    }
+
+    // === Runtime heartbeat ===
+    if (manifest.runtimeSessionId && manifest.toolCallCount % HEARTBEAT_INTERVAL === 0) {
+      callRuntime('session.heartbeat', {
+        session_id: manifest.runtimeSessionId
+      }).catch(() => {});
+    }
+
+    // === Update timestamp ===
+    manifest.lastUpdated = new Date().toISOString();
+
+    // === Write manifest ===
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+
+    // === Render progress.md ===
+    renderProgress(taskPath, manifest);
+
+    // === Compaction guard ===
+    const estimatedTokens = weightedTokenEstimate(manifest);
+    if (estimatedTokens > 130000) {
+      writeCompactionWarning(taskPath, manifest, estimatedTokens);
+    }
+  } catch (error) {
+    if (process.env.TF_DEBUG) console.error(`[tf-heartbeat] ${error.message}`);
+  }
+
+  process.exit(0);
+}
+
+function renderProgress(taskPath, manifest) {
+  const notes = manifest.progressNotes;
+  if (!notes || notes.length === 0) return;
+
+  try {
+    const lines = [
+      `# Progress: ${manifest.description || manifest.taskId}`,
+      `**Phase:** ${manifest.phase} | **Status:** ${manifest.status}`,
+      `**Profile:** ${manifest.qualityProfile || 'standard'} | **Route:** ${manifest.executionMode || 'standard'}`,
+      '',
+    ];
+
+    const done = notes.filter(n => n.status === 'done');
+    const active = notes.filter(n => n.status === 'active');
+    const pending = notes.filter(n => n.status === 'pending');
+    const issues = notes.filter(n => n.status === 'issue');
+
+    if (done.length > 0) {
+      lines.push('## Completed');
+      for (const n of done) lines.push(`- [x] ${n.text}`);
+      lines.push('');
+    }
+
+    if (active.length > 0) {
+      lines.push('## In Progress');
+      for (const n of active) lines.push(`- [ ] **${n.text}**`);
+      lines.push('');
+    }
+
+    if (pending.length > 0) {
+      lines.push('## Pending');
+      for (const n of pending) lines.push(`- [ ] ${n.text}`);
+      lines.push('');
+    }
+
+    if (issues.length > 0) {
+      lines.push('## Issues');
+      for (const n of issues) lines.push(`- ⚠ ${n.text}`);
+      lines.push('');
+    }
+
+    if (manifest.modifiedFiles && manifest.modifiedFiles.length > 0) {
+      lines.push(`**Files modified:** ${manifest.modifiedFiles.length}`);
+    }
+
+    fs.writeFileSync(path.join(taskPath, 'progress.md'), lines.join('\n'));
+  } catch {
+    // Non-fatal
+  }
+}
+
+function weightedTokenEstimate(manifest) {
+  const t = manifest.toolCallsByType || {};
+  return 30000
+    + ((t['Edit'] || 0) + (t['Write'] || 0)) * 4000
+    + (t['Read'] || 0) * 3500
+    + (t['Bash'] || 0) * 2500
+    + ((t['Grep'] || 0) + (t['Glob'] || 0)) * 1500
+    + (t['Agent'] || 0) * 5000
+    + ((t['WebFetch'] || 0) + (t['WebSearch'] || 0)) * 2000;
+}
+
+function writeCompactionWarning(taskPath, manifest, estimatedTokens) {
+  try {
+    const progressPath = path.join(taskPath, 'progress.md');
+    if (!fs.existsSync(progressPath)) return;
+
+    let content = fs.readFileSync(progressPath, 'utf8');
+    const estimatedK = Math.round(estimatedTokens / 1000);
+    const warning = [
+      '',
+      '### Compaction Guard',
+      `Warning: Estimated context ~${estimatedK}k tokens (${manifest.toolCallCount} tool calls).`,
+      'Context approaching compaction threshold. Ensure manifest.json is current.',
+    ].join('\n');
+
+    content = content.replace(/\n### Compaction Guard\n[\s\S]*?(?=\n### |\n## |$)/, '');
+    content = content.trimEnd() + '\n' + warning + '\n';
+    fs.writeFileSync(progressPath, content);
+  } catch { /* Non-fatal */ }
+}
+
+main();
