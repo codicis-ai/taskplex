@@ -46,6 +46,32 @@ If `manifest.initiativeMode === true`: read the "Blueprint: Initiative Mode" sec
 
 ---
 
+## ⚠️ Execution Continuity Rule (HARD RULE — all routes)
+
+**The user's last checkpoint is Pre-Implementation Acknowledgment (Phase A.3).** Once the user approves the plan and implementation begins, the orchestrator runs to completion without stopping to ask.
+
+**DO NOT:**
+- ❌ Ask "should I continue?" between agent dispatches
+- ❌ Pause after one agent returns to check in with the user
+- ❌ Stop after a few tasks and ask to proceed
+- ❌ Present intermediate results and wait for approval before the next agent
+- ❌ Run implementation across multiple user turns when it can complete in one
+
+**DO:**
+- ✅ Dispatch all independent agents in a **single message** (parallel Agent tool calls)
+- ✅ When an agent returns, immediately dispatch the next dependent agent if any
+- ✅ Run all agents, merge results, then proceed to QA/validation — uninterrupted
+- ✅ Only stop for: blocking failure, iteration limit reached, or agent escalation that needs user input
+
+**For Team/Blueprint routes specifically:**
+- All independent workers dispatch in **one message** using parallel tool calls
+- Each worker MUST use `isolation: "worktree"` (Blueprint) or shared workspace with file ownership (Team)
+- After all workers return, merge and proceed to build check → QA → validation — no pause
+
+The user trusted the plan when they approved it. Implementation executes that plan. The next user interaction is at completion (git/PR) or if something breaks.
+
+---
+
 ## Standard Route
 
 ### Phase A: Planning Agent
@@ -156,16 +182,22 @@ Same as Standard route.
 
 ### Phase B: Multi-Agent Implementation
 
-**⚠️ HARD RULE**: The orchestrator MUST NOT edit source code directly in Team mode. Delegate to agents. The `tp-design-gate` hook enforces this — source file edits are blocked until `manifest.implementationDelegated = true`, which must only be set AFTER agents are spawned.
+**⚠️ HARD RULES (Team implementation)**:
+1. The orchestrator MUST NOT edit source code directly — delegate to agents
+2. Independent agents MUST be dispatched in a **single message** (parallel Agent tool calls)
+3. Do NOT pause between agent dispatches — see Execution Continuity Rule above
+4. Run straight through: dispatch all agents → merge → build check → QA → validation
+5. The `tp-design-gate` hook blocks orchestrator source edits until `manifest.implementationDelegated = true`
 
 **Handoff contract**: `~/.claude/taskplex/handoff-contract.md` — structured format for all agent transitions.
 
 1. **Read sections.json** for independent section assignments.
 
 2. **Spawn 1-3 implementation agents** (one per independent section).
+   **Dispatch ALL independent agents in a single message using parallel Agent tool calls.**
    **After all agents are dispatched**, set `manifest.implementationDelegated = true`.
 
-   Spawn each agent:
+   Before spawning, write handoff records. Then spawn all at once:
 
    Before spawning each agent, write an assignment handoff to `manifest.workerHandoffs[]`:
    ```json
@@ -249,16 +281,36 @@ If triggered:
 
 ### Phase C: Multi-Agent Implementation
 
-**⚠️ HARD RULE**: The orchestrator MUST NOT edit source code directly in Blueprint mode. ALL implementation goes through agents in isolated worktrees. The `tp-design-gate` hook enforces this — source file edits are blocked until `manifest.implementationDelegated = true`, which must only be set AFTER agents are spawned.
+**⚠️ HARD RULES (Blueprint implementation)**:
+1. The orchestrator MUST NOT edit source code directly — ALL implementation goes through agents
+2. Every agent MUST use `isolation: "worktree"` — no exceptions
+3. Independent agents MUST be dispatched in a **single message** (parallel Agent tool calls)
+4. Do NOT pause between agent dispatches — see Execution Continuity Rule above
+5. Run straight through: dispatch all agents → merge results → build check → QA → validation
+6. The `tp-design-gate` hook blocks orchestrator source edits until `manifest.implementationDelegated = true`
 
-4. **Spawn implementation agents** (fan-out):
-   - If spec has multiple independent sections: spawn 1-3 agents in parallel
-   - If sections are dependent: spawn sequentially
-   - **Each agent MUST use `isolation: "worktree"`** — this is non-negotiable for Blueprint
+4. **Spawn implementation agents** (fan-out, non-stop):
+
+   **Independent sections** — dispatch ALL in one message using parallel Agent tool calls:
+   ```
+   // In a SINGLE response, call Agent multiple times:
+   Agent({ prompt: "worker-1 brief...", isolation: "worktree" })
+   Agent({ prompt: "worker-2 brief...", isolation: "worktree" })
+   Agent({ prompt: "worker-3 brief...", isolation: "worktree" })
+   ```
+
+   **Dependent sections** — dispatch sequentially, but immediately (no user check-in between):
+   ```
+   Agent({ prompt: "worker-1 (foundation)...", isolation: "worktree" })
+   // worker-1 returns → immediately dispatch worker-2
+   Agent({ prompt: "worker-2 (depends on worker-1)...", isolation: "worktree" })
+   ```
+
+   Each agent:
    > Spawn implementation-agent (sonnet) from ~/.claude/agents/core/implementation-agent.md
      Context: "Read your brief at .claude-task/{taskId}/workers/worker-{n}-brief.md. Implement the plan." + file_intelligence per primary file
      max_turns: 30
-     **isolation: worktree** (each worker gets its own git worktree)
+     **isolation: "worktree"** ← MANDATORY for Blueprint
      Writes: source code changes, deferred items
      Returns: "STATUS: completed|blocked. FILES_MODIFIED: [...]. BUILD: pass|fail."
 
@@ -368,30 +420,36 @@ If `manifest.git.available === true` and `manifest.git.config.createBranch === t
 
 ### Initiative Phase 3: Wave Execution
 
+**⚠️ Execution Continuity applies here.** Once wave execution begins, run all waves to completion. Do NOT ask the user between features or between waves unless a blocking failure occurs. The user already approved the plan (Phase 2b) and chose execution mode (Phase 2c).
+
+**Interactive mode** means: one confirmation per WAVE (not per feature). After the user confirms a wave, all features in that wave execute non-stop.
+
+**Autonomous mode** means: no confirmations at all — waves execute back-to-back.
+
 For each wave (0, 1, 2, ...):
 
 1. Update `prd-state.json`: set wave status to `in-progress`
 2. **Create wave branch** (if git available + createBranch)
+3. **If Interactive mode AND wave > 0**: Single confirmation: "Wave {N} ready ({features}). Proceed?" — then run non-stop
+4. **If Autonomous mode**: proceed directly, no confirmation
 
-3. **Wave 0** (sequential):
-   For each feature in wave 0:
+5. **Wave 0** (sequential — foundational features):
+   For each feature in wave 0, dispatch immediately one after another:
    - Update prd-state.json: feature status = `in-progress`
    - Check attempt count (max per policy `limits.prdFeatureAttemptsAutonomous` in autonomous mode)
    - Each feature gets architect-level worker brief + implementation agent dispatch
-   - If Interactive: `AskUserQuestion` with pre-filled context — confirm before proceeding
-   - If Autonomous: proceed directly
    > Spawn implementation-agent (sonnet) from ~/.claude/agents/core/implementation-agent.md
      Context: assembled payload, feature requirements, max_turns: 30
-     **isolation: worktree**
+     **isolation: "worktree"** ← MANDATORY
      Writes: source code changes, deferred items
      Returns: "STATUS: completed|blocked. FILES_MODIFIED: [...]. BUILD: pass|fail."
-   - On return: update manifest + prd-state.json
-   - If failed: mark dependent features as `blocked`, continue to next
+   - On return: update manifest + prd-state.json, **immediately dispatch next feature**
+   - If failed: mark dependent features as `blocked`, continue to next — do NOT stop to ask
 
-4. **Wave 1+** (parallel via worktrees OR sequential):
-   - If worktrees available: spawn each feature in isolated worktree
-   - If not: execute sequentially
-   - Same dispatch pattern as Wave 0
+6. **Wave 1+** (parallel — independent features):
+   - Dispatch ALL features in the wave in a **single message** using parallel Agent tool calls
+   - Every agent MUST use `isolation: "worktree"`
+   - After all return: merge, update state, proceed to next wave immediately
 
 ### Initiative Phase 4: Wave Merge
 

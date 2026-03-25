@@ -77,11 +77,15 @@ Read: ~/.claude/taskplex/phases/planning.md
 This file defines three routes (Standard, Team, Blueprint) with:
 - Planning agent spawn
 - Spec critic review
-- Pre-implementation user acknowledgment (MANDATORY)
+- Pre-implementation user acknowledgment (MANDATORY — last user checkpoint before implementation)
 - Implementation agent dispatch
 - Build checks
 
-**For Team/Blueprint routes**: The orchestrator MUST delegate to agents. The implementation gate hook blocks orchestrator source edits until `manifest.implementationDelegated = true`. Blueprint agents MUST use `isolation: "worktree"`.
+**For Team/Blueprint routes**:
+- The orchestrator MUST delegate to agents — the implementation gate hook blocks orchestrator source edits until `manifest.implementationDelegated = true`
+- Blueprint agents MUST use `isolation: "worktree"` — no exceptions
+- Independent agents MUST be dispatched in a single message (parallel Agent tool calls)
+- **Execution Continuity Rule**: Once the user approves the plan, implementation runs non-stop to completion. Do NOT pause between agents, do NOT ask "should I continue?". The only reason to stop is a blocking failure.
 
 ### STEP 3: Read the QA phase file
 
@@ -301,6 +305,10 @@ fs.writeFileSync(p, JSON.stringify(m, null, 2));
 8. **NEVER ask questions the documentation already answers** — gather context first, ask about gaps
 9. **NEVER force questions for ceremony** — if context is sufficient, fewer questions is better
 10. **NEVER implement directly in team/blueprint mode** — delegate to agents, the implementation gate will block you
+11. **NEVER ask "should I continue?" during implementation** — the user approved the plan, execute it non-stop
+12. **NEVER pause between agent dispatches** — dispatch all independent agents in one message (parallel calls)
+13. **NEVER skip worktrees in blueprint mode** — every implementation agent MUST use `isolation: "worktree"`
+14. **NEVER loop through features one-at-a-time asking for confirmation** — dispatch wave, run to completion
 
 ## RECOVERY
 
