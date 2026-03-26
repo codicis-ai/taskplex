@@ -170,13 +170,20 @@ This file defines the full validation pipeline:
   {✅|➡️|⬜} 5.5.6 QA report
 
 📍 PHASE 6: VALIDATION
-  {✅|➡️|⬜} 6.1 Artifact validation
-  {✅|➡️|⬜} 6.2 Build validation (typecheck + lint + tests)
-  {✅|➡️|⬜} 6.3 Security review
-  {✅|➡️|⬜} 6.4 Closure (requirements verification)
-  {✅|➡️|⬜} 6.5 Write validation-gate.json
+  {✅|➡️|⬜} 6.0 Artifact validation (blocking pre-check)
+  {✅|➡️|⬜} 6.0.5 Traceability gate [standard + enterprise]
+  {✅|➡️|⬜} 6.1 Build validation (typecheck + lint + tests)
+  {✅|➡️|⬜} 6.1b Convention compliance checks
+  {✅|➡️|⬜} 6.2 Security review (security-reviewer)
+  {✅|➡️|⬜} 6.3 Closure — requirements verification (closure-agent)
+  {✅|➡️|⬜} 6.4 Code review (code-reviewer) [standard + enterprise]
+  {✅|➡️|⬜} 6.5 Conditional reviewers (database, e2e, user-workflow) [if triggered]
+  {✅|➡️|⬜} 6.6 Build-fixer [if any reviewer found issues]
+  {✅|➡️|⬜} 6.7 Hardening (hardening-reviewer) [standard + enterprise]
+  {✅|➡️|⬜} 6.8 Compliance — final gate (compliance-agent)
+  {✅|➡️|⬜} 6.9 Write validation-gate.json
 
-📍 PHASE 7: COMPLETION
+📍 PHASE 7: COMPLETION (part of validation phase in manifest)
   {✅|➡️|⬜} 7.1 Git commit
   {✅|➡️|⬜} 7.2 Push/PR (if requested)
   {✅|➡️|⬜} 7.3 Task summary
@@ -257,11 +264,18 @@ This file defines the full validation pipeline:
     "5.5.6 QA report": "done|active|pending|skipped"
   },
   "validation": {
-    "6.1 Artifact validation": "done|active|pending",
-    "6.2 Build validation": "done|active|pending",
-    "6.3 Security review": "done|active|pending",
-    "6.4 Closure": "done|active|pending",
-    "6.5 Write validation-gate.json": "done|active|pending"
+    "6.0 Artifact validation": "done|active|pending",
+    "6.0.5 Traceability gate": "done|active|pending|skipped",
+    "6.1 Build validation": "done|active|pending",
+    "6.1b Convention compliance": "done|active|pending|skipped",
+    "6.2 Security review": "done|active|pending",
+    "6.3 Closure": "done|active|pending",
+    "6.4 Code review": "done|active|pending|skipped",
+    "6.5 Conditional reviewers": "done|active|pending|skipped",
+    "6.6 Build-fixer": "done|active|pending|skipped",
+    "6.7 Hardening": "done|active|pending|skipped",
+    "6.8 Compliance": "done|active|pending",
+    "6.9 Write validation-gate.json": "done|active|pending"
   },
   "completion": {
     "7.1 Git commit": "done|active|pending",

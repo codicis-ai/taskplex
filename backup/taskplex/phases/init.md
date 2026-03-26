@@ -138,6 +138,34 @@ Create `~/.claude/sessions/sess-{pid}.json` for the 3D visualizer:
 
 After creating the session file, update `manifest.sessionFile` to the actual path. Do NOT leave it as a placeholder.
 
+## Step 2b: Create Task List (MANDATORY — enables progress tracking in conversation)
+
+**Immediately after creating the manifest and session file**, create the task list using `TaskCreate` for all major phases. This makes progress visible in the conversation UI throughout the task lifecycle.
+
+**For full design depth**, create these tasks:
+1. "Initialize task — parse flags, create manifest, load context" (mark `in_progress`)
+2. "Convention check — scan codebase, confirm patterns with user"
+3. "Intent exploration — synthesize context, confirm with user, resolve gaps"
+4. "Write brief.md — approaches, section approval, write approved design"
+5. "Planning — write spec, critic review, user acknowledges plan"
+6. "Implementation — dispatch agents, build check"
+7. "QA — smoke test, journey walkthrough, edge cases, bug fixes"
+8. "Validation — security, closure, code review, hardening, compliance"
+9. "Completion — git commit, PR, task summary"
+
+**For light design depth**, create these tasks:
+1. "Initialize task" (mark `in_progress`)
+2. "Design (light) — synthesize, confirm, write brief"
+3. "Planning — write spec, critic review, user acknowledges"
+4. "Implementation — dispatch agents, build check"
+5. "QA — smoke test, journey walkthrough"
+6. "Validation — security, closure, code review, compliance"
+7. "Completion — git commit, PR, task summary"
+
+Mark each task `in_progress` when you start it, `completed` when done. This is what the user sees in the conversation — it must stay current.
+
+**On session resume**: The `tp-session-start` hook will instruct you to recreate tasks from `manifest.phaseChecklist`. Follow that instruction before doing any other work.
+
 ## Step 3: Load Context & Check for Resume
 
 1. Read `INTENT.md`

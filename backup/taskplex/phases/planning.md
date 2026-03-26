@@ -106,8 +106,8 @@ If triggered:
 
 After planning agent returns, spawn a spec reviewer:
 
-> Spawn reviewer --focus spec-compliance (haiku) from ~/.claude/agents/core/reviewer.md
-  Context: spec.md, brief.md, CONVENTIONS.md — review spec only, not code
+> Spawn closure-agent (haiku) from ~/.claude/agents/core/closure-agent.md
+  Context: spec.md, brief.md, CONVENTIONS.md — review spec against brief requirements, not code
   Returns: "Verdict: APPROVED|NEEDS_REVISION"
 
 Track in `manifest.iterationCounts.reviewRounds.specCritic`.
@@ -168,8 +168,8 @@ Same as Standard route — see above.
 
 ### Phase A.2: Spec Critic (mandatory)
 
-> Spawn reviewer --focus spec-compliance (haiku) from ~/.claude/agents/core/reviewer.md
-  Context: spec.md, sections.json, brief.md, CONVENTIONS.md — review spec + section assignments
+> Spawn closure-agent (haiku) from ~/.claude/agents/core/closure-agent.md
+  Context: spec.md, sections.json, brief.md, CONVENTIONS.md — review spec + section assignments against brief requirements
   Returns: "Verdict: APPROVED|NEEDS_REVISION"
 
 Track in `manifest.iterationCounts.reviewRounds.specCritic`.

@@ -21,8 +21,8 @@
     },
     "phase": {
       "type": "string",
-      "enum": ["bootstrap", "init", "brief", "planning", "implementation", "validation"],
-      "description": "Current task phase (v2: hardening and completion merged into validation)"
+      "enum": ["bootstrap", "init", "brief", "planning", "implementation", "qa", "validation"],
+      "description": "Current task phase (v2: hardening and completion merged into validation. QA runs between implementation and validation.)"
     },
     "designPhase": {
       "type": "string",

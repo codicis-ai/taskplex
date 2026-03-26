@@ -31,17 +31,21 @@
     "standard": {
       "maxFiles": 20,
       "maxTurns": 25,
-      "agents": ["planning-agent", "implementation-agent"]
+      "agents": ["planning-agent", "closure-agent", "implementation-agent", "build-fixer"],
+      "validationAgents": ["security-reviewer", "closure-agent", "code-reviewer", "hardening-reviewer", "compliance-agent"]
     },
     "team": {
       "maxFiles": null,
       "maxTurns": 25,
-      "agents": ["planning-agent", "implementation-agent"]
+      "agents": ["planning-agent", "closure-agent", "implementation-agent", "build-fixer"],
+      "validationAgents": ["security-reviewer", "closure-agent", "code-reviewer", "hardening-reviewer", "compliance-agent"]
     },
     "blueprint": {
       "maxFiles": null,
       "maxTurns": 30,
-      "agents": ["architect", "implementation-agent", "researcher"]
+      "agents": ["architect", "researcher", "implementation-agent", "merge-resolver", "build-fixer"],
+      "validationAgents": ["security-reviewer", "closure-agent", "code-reviewer", "hardening-reviewer", "compliance-agent"],
+      "initiativeAgents": ["prd-bootstrap", "strategic-critic", "tactical-critic"]
     }
   },
   "legacyModeMapping": {
