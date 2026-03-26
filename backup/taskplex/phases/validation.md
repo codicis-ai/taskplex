@@ -121,7 +121,7 @@ Update manifest: `validation.conventionCompliance`.
 
 ## Step 2: Security Review (ALL — mandatory)
 
-> Spawn reviewer --focus security (sonnet) from ~/.claude/agents/core/reviewer.md
+> Spawn security-reviewer (sonnet) from ~/.claude/agents/core/security-reviewer.md
   Context: manifest.json (modified files list), OWASP focus areas
   Writes: .claude-task/{taskId}/reviews/security.md
   Returns: "PASS" | "WARN" | "FAIL"
@@ -132,7 +132,7 @@ Update manifest: `validation.security`.
 
 ## Step 3: Closure — Requirements + Intent Verification (ALL)
 
-> Spawn reviewer --focus spec-compliance (haiku) from ~/.claude/agents/core/reviewer.md
+> Spawn closure-agent (haiku) from ~/.claude/agents/core/closure-agent.md
   Context: manifest.json, brief.md, spec.md, worker status files
   Writes: .claude-task/{taskId}/reviews/closure.md
   Returns: "PASS" | "FAIL: {what's missing}"
@@ -141,7 +141,7 @@ Update manifest: `validation.closure`.
 
 ## Step 4: Code Review (Standard + Team + Blueprint routes — skip for lean profile)
 
-> Spawn reviewer --focus code-quality (sonnet) from ~/.claude/agents/core/reviewer.md
+> Spawn code-reviewer (sonnet) from ~/.claude/agents/core/code-reviewer.md
   Context: task intent, spec.md, changed files list, CONVENTIONS.md, CLAUDE.md
   Writes: .claude-task/{taskId}/reviews/code-quality.md
   Returns: "Verdict: APPROVED|NEEDS_REVISION. {N} issues, {M} convention violations."
@@ -153,17 +153,20 @@ Update manifest: `validation.codeReview`.
 ## Step 5: Conditional Reviewers (triggered by file patterns)
 
 **Database Reviewer** — triggers when SQL, migration, or schema files modified:
-> Spawn reviewer --focus database (sonnet) from ~/.claude/agents/core/reviewer.md
+> Spawn database-reviewer (sonnet) from ~/.claude/agents/core/database-reviewer.md
+  Context: manifest.json (modified files), database schema files
   Writes: .claude-task/{taskId}/reviews/database.md
   Returns: "PASS" | "WARN" | "FAIL"
 
-**E2E Validator** — triggers when UI components/pages modified:
-> Spawn reviewer --focus e2e (sonnet) from ~/.claude/agents/core/reviewer.md
+**E2E Reviewer** — triggers when UI components/pages modified:
+> Spawn e2e-reviewer (sonnet) from ~/.claude/agents/core/e2e-reviewer.md
+  Context: manifest.json (modified files), dev server URL
   Writes: .claude-task/{taskId}/reviews/e2e.md
-  Returns: "PASS" | "FAIL"
+  Returns: "PASS" | "WARN" | "FAIL" | "SKIP"
 
 **User Workflow Reviewer** — triggers when navigation/routing files modified:
-> Spawn reviewer --focus user-workflow (haiku) from ~/.claude/agents/core/reviewer.md
+> Spawn user-workflow-reviewer (haiku) from ~/.claude/agents/core/user-workflow-reviewer.md
+  Context: manifest.json (modified files), routing/nav config
   Writes: .claude-task/{taskId}/reviews/user-workflow.md
   Returns: "PASS" | "WARN"
 
@@ -261,7 +264,7 @@ Update manifest: `validation.readiness`.
 7. **Write hardening report**: To `.claude-task/{taskId}/hardening/` (report.md, gate-decision.json, individual reports)
 8. **Present results**: Profile-specific blocking behavior
 
-> Spawn reviewer --focus hardening (sonnet) from ~/.claude/agents/core/reviewer.md
+> Spawn hardening-reviewer (sonnet) from ~/.claude/agents/core/hardening-reviewer.md
   Context: manifest.json, conventions.json (hardening section), modified files, capability map
   Writes: .claude-task/{taskId}/hardening/ (report.md, gate-decision.json, individual reports)
   Returns: "HARDENING: {verdict}. SCORE: {N}/{threshold}. AUTOMATED: {passed}/{total}. HUMAN: {N} items."
