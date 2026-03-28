@@ -331,7 +331,11 @@ After each sub-phase completes, update the manifest:
 Automated scan only, no user questions:
 
 1. **Read existing conventions**: `CONVENTIONS.md`, `conventions.json`
-2. **Query code/mem** (if available): `search_knowledge` for conventions, `file_intelligence` on target files
+2. **Memplex convention lookup** (if `manifest.memplexAvailable`):
+   - `search_knowledge("conventions {target area}")` — conventions confirmed in past tasks
+   - `file_intelligence` on target area files — known issues, coupled files, change patterns
+   - Store results in `manifest.memplexContext.conventionCheck`
+   - If memplex not available: skip, rely on codebase scan only
 3. **Scan target area**: Grep/Glob the area being modified for patterns (naming, structure, imports, error handling). 5-8 calls max.
 4. **Infer conventions**: Note patterns found (e.g., "components use PascalCase", "errors use Result type", "tests co-located")
 5. **Record**: Write inferences to `manifest.conventionContext` (task-scoped). If new conventions discovered that aren't in CONVENTIONS.md, note them for later (don't prompt user).
@@ -342,9 +346,9 @@ Automated scan only, no user questions:
 
 **designPhase starts at: `convention-scan`**
 
-Same automated scan as light, PLUS targeted questions:
+Same automated scan as light (including memplex convention lookup if available), PLUS targeted questions:
 
-1. **Run automated scan** (same as light steps 1-4). Record inferences to `manifest.conventionContext`.
+1. **Run automated scan** (same as light steps 1-4, including memplex lookup). Record inferences to `manifest.conventionContext`.
 
 **→ Set `manifest.designPhase = "convention-check"`. Initialize `manifest.designInteraction = {}` if not present.**
 
@@ -398,16 +402,22 @@ If the user explicitly says "just do it" / "skip design" / "go ahead" during thi
 
 Before asking anything, gather what's already known. Do NOT ask the user something the documentation or invocation already answers.
 
-**Three context sources:**
+**Three context sources** (+ optional memplex):
 
 1. **Invocation context** — task description, flags, referenced files (`--plan`, PRD)
 2. **Project documentation** — INTENT.md, CLAUDE.md, README.md, product/brief.md, CONVENTIONS.md
-3. **Quick codebase scan** — 3-5 Grep/Glob calls on target area, ONE `search_knowledge` call if cm available
+3. **Quick codebase scan** — 3-5 Grep/Glob calls on target area
+4. **Memplex knowledge** (if `manifest.memplexAvailable`):
+   - `search_knowledge` scoped to task description — past decisions, rejected approaches, known constraints about this area
+   - `search_conversations` — if context density is low, check for prior discussions about similar features
+   - Store results in `manifest.memplexContext.intentExploration`
+   - These results may raise context density (e.g., low → medium if memplex has past decisions)
+   - If memplex not available: skip, rely on sources 1-3 only
 
 **Record context density** in `manifest.designInteraction`:
 ```json
 {
-  "contextSources": ["task-description", "INTENT.md", "CLAUDE.md", "codebase-scan"],
+  "contextSources": ["task-description", "INTENT.md", "CLAUDE.md", "codebase-scan", "memplex"],
   "contextDensity": "high|medium|low"
 }
 ```

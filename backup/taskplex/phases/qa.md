@@ -228,11 +228,13 @@ If bugs were found in steps 4.5.2-4.5.4, triage and fix them.
 ### Fix loop rules:
 
 1. **Max 3 fix rounds.** After 3, stop and report remaining issues.
-2. Each round:
+2. **Memplex error check** (if `manifest.memplexAvailable`): Before each fix attempt, call `get_error_resolution` for the bug's error pattern. If a known resolution exists, apply it directly — this may resolve the bug without a full debugging cycle. Store results in `manifest.memplexContext.qa`.
+3. Each round:
    a. Pick the highest-severity unfixed bug
-   b. Fix it (edit the relevant files)
-   c. Re-test the affected journey to verify the fix
-   d. Quick-check that the fix didn't break other journeys (regression)
+   b. Check for known resolution (step 2) — if found, apply directly
+   c. If no known resolution: fix it (edit the relevant files)
+   d. Re-test the affected journey to verify the fix
+   e. Quick-check that the fix didn't break other journeys (regression)
 3. If a fix fails (introduces new bugs or doesn't resolve the issue):
    a. Revert the fix
    b. Log as unresolved: `manifest.qa.unresolvedIssues.push({description})`

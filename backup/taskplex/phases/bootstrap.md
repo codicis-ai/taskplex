@@ -31,6 +31,11 @@ Collect from three sources — do NOT ask the user anything the documentation al
 - Quick grep for domain signals (API routes, CLI commands, UI components)
 - Detect project type (web app, CLI, API, library, infrastructure)
 
+**Source D — Memplex knowledge** (if `manifest.memplexAvailable`):
+- `search_knowledge` scoped to project name — prior context from other sessions about this project
+- `query_knowledge_graph` — project architecture, entity relationships
+- If memplex not available: skip, rely on sources A-C only
+
 Record what was found and what's missing in `manifest.bootstrapContext`:
 ```json
 {
