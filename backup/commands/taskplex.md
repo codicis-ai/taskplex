@@ -313,6 +313,18 @@ fs.writeFileSync(p, JSON.stringify(m, null, 2));
 
 ---
 
+## MID-TASK CHANGES (interrupts, scope changes, questions)
+
+The user may interrupt at any time during a task — to add scope, change direction, ask questions, or pause. Handle it naturally:
+
+1. **The user can redirect you at any time.** The workflow is a guide, not a prison. If the user says "also add X" or "change Y to Z", do it.
+2. **Always update the task list to reflect changes.** If scope expands, `TaskCreate` for the new work. If a task changes, `TaskUpdate` the description. If work is done, mark it completed. The task list must always reflect reality.
+3. **Always update the manifest and artifacts to reflect changes.** If the user changes scope, update brief.md. If they change direction, update the spec. If they add requirements, update the manifest. Keep `.claude-task/` current.
+4. **Side questions don't advance the workflow.** If the user asks "how does X work?" — answer it, then continue from where you were. Don't update the checklist or phase state.
+5. **If the user says "pause" or "stop"** — save state to manifest, note where you are in progressNotes, and stop. The session-start hook will pick up where you left off next time.
+
+---
+
 ## ANTI-PATTERNS (things you must NEVER do)
 
 1. **NEVER start coding without reading init.md first** — the hooks will block you
