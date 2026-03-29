@@ -546,6 +546,29 @@ If the invocation + docs + Step 1 confirmation already cover these, Step 2 can h
 - Scope boundaries from step 4
 - Success criteria that map to test cases
 
+**Step 7b — Goal traceability** (if `INTENT.md` exists in project root):
+
+Map each acceptance criterion in brief.md back to a success criterion or quality priority in INTENT.md. This ensures the task serves the project's stated purpose — not just "does the code work" but "does this advance the project's goals."
+
+For each AC in the brief, find the INTENT.md criterion it serves:
+```json
+manifest.goalTraceability = {
+  "intentFile": "INTENT.md",
+  "mappings": [
+    { "ac": "AC-1.1: User can log in with email", "intentCriteria": "Users can authenticate in < 3 seconds", "intentSection": "Success Criteria" },
+    { "ac": "AC-1.2: Passwords hashed with bcrypt", "intentCriteria": "Zero credential exposure", "intentSection": "Quality Priorities" },
+    { "ac": "AC-2.1: Rate limiting on login", "intentCriteria": null, "intentSection": null, "note": "Security hardening — no direct intent mapping" }
+  ],
+  "coverage": { "mapped": 2, "unmapped": 1, "total": 3 }
+}
+```
+
+**Rules:**
+- Not every AC needs a mapping — implementation details (rate limiting, caching) may not trace to INTENT.md and that's fine
+- Flag if **zero** ACs map to INTENT.md — the task may be disconnected from project goals
+- Do NOT block on unmapped ACs — this is informational, not a gate
+- If INTENT.md doesn't exist: skip entirely, set `manifest.goalTraceability = null`
+
 ### Hardening Expectations (standard + enterprise)
 
 After the brief is confirmed:

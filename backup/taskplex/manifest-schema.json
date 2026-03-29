@@ -239,6 +239,34 @@
       },
       "description": "Validation gate results"
     },
+    "goalTraceability": {
+      "type": ["object", "null"],
+      "default": null,
+      "description": "Maps task acceptance criteria to INTENT.md success criteria. Null if no INTENT.md exists. Created during brief writing (Step 7b), verified by closure agent.",
+      "properties": {
+        "intentFile": { "type": "string", "description": "Path to INTENT.md" },
+        "mappings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "ac": { "type": "string", "description": "Acceptance criterion from brief.md" },
+              "intentCriteria": { "type": ["string", "null"], "description": "Matching criterion from INTENT.md, or null if no mapping" },
+              "intentSection": { "type": ["string", "null"], "description": "Section in INTENT.md (Success Criteria, Quality Priorities, etc.)" },
+              "note": { "type": "string", "description": "Why no mapping exists (for unmapped ACs)" }
+            }
+          }
+        },
+        "coverage": {
+          "type": "object",
+          "properties": {
+            "mapped": { "type": "integer" },
+            "unmapped": { "type": "integer" },
+            "total": { "type": "integer" }
+          }
+        }
+      }
+    },
     "buildCommands": {
       "type": "object",
       "properties": {
