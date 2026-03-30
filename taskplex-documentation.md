@@ -60,18 +60,37 @@ Pre-implementation thinking. Produces approved plan files that feed into `/tp`.
 
 Two modes: **Audit** (investigate quality) and **Review** (validate against brief). Also invoked automatically at task completion if `product/brief.md` exists.
 
-### 2.4 `/solidify` — Merge Skill Evolutions
+### 2.4 `frontend` — Frontend Development Skill
+
+**Files**: `~/.claude/skills/frontend/skill.md`, `~/.claude/skills/frontend/references/`, `~/.claude/skills/frontend/templates/`
+
+**Standalone skill** — works in any coding agent (Claude Code, Codex, Cursor) without TaskPlex. Triggers automatically on UI work (`.tsx`, `.jsx`, `.vue`, `.svelte`, `.css` files).
+
+Provides:
+- Design system detection (component libraries, tokens, themes, icons)
+- CSS approach detection and enforcement (Tailwind, CSS Modules, styled-components)
+- Component specification template (props, states, variants, accessibility)
+- Accessibility checklist (WCAG, ARIA, keyboard nav, contrast)
+- Responsive design patterns (breakpoint detection, mobile-first)
+- Visual review protocol (screenshot-based QA via agent-browser)
+
+**TaskPlex integration**: When running via `/tp`, enriches Sub-phase A (conventions), Sub-phase B (UI questions), planning (component specs), implementation (CSS/component conventions in agent context), and QA (visual review).
+
+**Complements** the `frontend-design` plugin (aesthetic guidance) with structural rigor (architecture, accessibility, responsive, conventions).
+
+### 2.5 `/solidify` — Merge Skill Evolutions
 
 **File**: `~/.claude/commands/solidify.md`
 
 User-initiated merge of staged skill improvements from `evolutions.json` into skill source files. Part of the skill evolution system.
 
-### 2.5 How They Connect
+### 2.6 How They Connect
 
 ```
 /plan ──produces──▶ PLAN-{id}.md ──feeds──▶ /tp --plan PLAN-{id}
                                                     │
                                               (builds it)
+                                          frontend skill enriches UI tasks
                                                     │
                                                     ▼
                                             /evaluate (review mode)
@@ -647,6 +666,16 @@ Signal Detection (keyword-based, no LLM)  →  Attribution (which skill?)
 ```
 ~/.claude/skills/
 ├── evaluate/                 # Product evaluation (audit + review)
+├── frontend/                 # Frontend development (standalone + TaskPlex integration)
+│   ├── skill.md              # Trigger + standalone + TaskPlex hooks
+│   ├── references/
+│   │   ├── design-system.md  # Detect component libraries, tokens, themes
+│   │   ├── css-patterns.md   # Detect CSS approach (Tailwind/Modules/styled)
+│   │   ├── component-spec.md # Component architecture template
+│   │   ├── accessibility.md  # WCAG checklist, ARIA patterns, keyboard nav
+│   │   └── responsive.md     # Breakpoint detection, mobile-first patterns
+│   └── templates/
+│       └── visual-review.md  # Screenshot-based visual QA protocol
 └── plan/                     # Planning trigger wrapper
 ```
 
