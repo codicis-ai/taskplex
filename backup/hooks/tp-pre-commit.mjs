@@ -39,6 +39,14 @@ async function main() {
       return;
     }
 
+    // Allow commits that only touch task artifacts (.claude-task/, product/, progress files)
+    // These are state-saving commits, not source code commits
+    const isStateOnly = /git\s+add\s+\.claude-task|git\s+add\s+product\/|git\s+commit.*chore.*[Tt]ask[Pp]lex\s*state|git\s+commit.*WIP.*state|git\s+stash/.test(command);
+    if (isStateOnly) {
+      allowTool();
+      return;
+    }
+
     const validation = isValidationPassed(taskPath);
     if (!validation.passed) {
       const missing = validation.missing?.length
@@ -48,7 +56,9 @@ async function main() {
         `TaskPlex pre-commit: Commit blocked — validation has not passed.\n` +
         `${missing}\n` +
         `Complete the validation phase before committing.\n` +
-        `Phase file: ~/.claude/taskplex/phases/validation.md`
+        `Phase file: ~/.claude/taskplex/phases/validation.md\n\n` +
+        `To save task state without triggering this gate, commit only .claude-task/ files:\n` +
+        `git add .claude-task/ && git commit -m "chore: TaskPlex state checkpoint"`
       );
       return;
     }
