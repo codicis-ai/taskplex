@@ -200,13 +200,22 @@
       }
     ]
   },
-  "enabledPlugins": {
-    "rust-analyzer-lsp@claude-plugins-official": true,
-    "typescript-lsp@claude-plugins-official": true
-  },
-  "skipDangerousModePermissionPrompt": true,
   "statusLine": {
     "type": "command",
     "command": "node C:/Users/JNaidu/.claude/statusline.mjs"
+  },
+  "enabledPlugins": {
+    "rust-analyzer-lsp@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "pyright-lsp@claude-plugins-official": true
+  },
+  "skipDangerousModePermissionPrompt": true,
+  "mcpServers": {
+    "officecli": {
+      "command": "C:\\Users\\JNaidu\\AppData\\Local\\OfficeCli\\officecli.exe",
+      "args": [
+        "mcp"
+      ]
+    }
   }
 }
