@@ -188,39 +188,60 @@ Track in `manifest.iterationCounts.reviewRounds.specCritic`.
 
 Set `planSource.userAcknowledged = true` and `workflowState.standardPlanning.executionAuthorized = true`.
 
-### Phase A.4: Refine Task List (MANDATORY — after user approves plan)
+### Phase A.4: Refine Task List (MANDATORY — STOP and do this NOW)
 
-Now that the plan is concrete, replace the placeholder tasks from init Step 2b with specific tasks based on the actual spec, route, and scope. Use `TaskUpdate` to update existing placeholders and `TaskCreate` for new tasks.
+**You MUST refine the task list immediately after the user approves the plan.** Do NOT proceed to implementation until the task list reflects the actual plan. The generic "Implementation" placeholder must be replaced with specific tasks.
 
-**For Standard route:**
-- Update "Implementation" → "Implementation — {N} files per spec"
-- Add: "Build check — typecheck + lint + tests"
-- Add: "Update documentation — README, API docs, migration notes (if applicable)"
+**Do this RIGHT NOW using TaskUpdate and TaskCreate:**
 
-**For Team route:**
-- Update "Implementation" → "Dispatch {N} workers — {section summaries}"
-- Add one task per worker section: "Worker {N}: {section title} — {file count} files"
-- Add: "Merge workers + build gate"
-- Add: "Update documentation"
+**Step 1 — Delete the placeholder** "Implementation" task (TaskUpdate with status: deleted).
 
-**For Blueprint route:**
-- Update "Implementation" → "Architecture review + {N} worktree workers"
-- Add: "Present architecture to user"
-- Add one task per worker: "Worker {N}: {section title} (worktree)"
-- Add: "Merge worktrees + build gate"
-- Add: "Update documentation"
+**Step 2 — Create specific implementation tasks based on the route:**
 
-**Refine QA and Validation placeholders:**
-- Update "QA" → "QA — {method} ({product type})" (e.g., "QA — browser walkthrough (web app)")
-- Update "Validation" → "Validation — {profile} profile ({N} gates)"
+For Standard route, call TaskCreate for each:
+```
+TaskCreate: "Implement — {summary of spec, N files}" 
+TaskCreate: "Coherence check — verify code matches spec"
+TaskCreate: "Build gate — typecheck + lint + tests"
+TaskCreate: "Update documentation" (if API/README/config changed)
+```
 
-**Documentation task detail** — based on what the spec modifies:
+For Team route, call TaskCreate for each:
+```
+TaskCreate: "Worker 1: {section title} — {file count} files"
+TaskCreate: "Worker 2: {section title} — {file count} files"
+TaskCreate: "Worker 3: {section title} — {file count} files" (if applicable)
+TaskCreate: "Coherence check — verify each worker matches spec"
+TaskCreate: "Merge workers + build gate"
+TaskCreate: "Update documentation"
+```
+
+For Blueprint route, call TaskCreate for each:
+```
+TaskCreate: "Present architecture to user"
+TaskCreate: "Worker 1: {section title} (worktree)"
+TaskCreate: "Worker 2: {section title} (worktree)"
+TaskCreate: "Worker 3: {section title} (worktree)" (if applicable)
+TaskCreate: "Coherence check — verify each worker matches spec"
+TaskCreate: "Merge worktrees + build gate"
+TaskCreate: "Update documentation"
+```
+
+**Step 3 — Refine QA and Validation placeholders:**
+```
+TaskUpdate: "QA" → "QA — {method} ({product type})" (e.g., "QA — browser walkthrough (web app)")
+TaskUpdate: "Validation" → "Validation — {profile} profile ({N} gates)"
+```
+
+**Step 4 — Add documentation task detail** (based on what the spec modifies):
 - API endpoints changed? → "Update API documentation"
 - New feature? → "Update README with feature description"
 - Config/env changes? → "Update setup instructions"
 - DB schema changes? → "Update migration notes"
 - CHANGELOG exists? → "Add CHANGELOG entry"
-- If nothing needs docs: skip the docs task
+- If nothing needs docs: delete the docs task
+
+**The user must see the refined task list before implementation begins.** This is their view into what's about to happen.
 
 ### Phase B: Implementation
 

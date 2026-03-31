@@ -164,14 +164,21 @@ async function main() {
       lines.push('MANDATORY: Output this checklist at the top of your next response.');
       lines.push('Resume from the step marked ➡️. Do NOT restart completed steps.');
 
-      // Task list recreation instruction
+      // Task list recreation instruction — MUST be prominent
       if (tasksToRecreate.length > 0) {
         lines.push('');
-        lines.push('MANDATORY: Recreate the task list using TaskCreate for remaining steps:');
+        lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        lines.push('⚠️  YOUR FIRST ACTION: Recreate the task list');
+        lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        lines.push('');
+        lines.push('Call TaskCreate for EACH of these steps BEFORE doing anything else:');
         for (const t of tasksToRecreate) {
-          lines.push(`  - "${t.step}" (${t.status === 'in_progress' ? 'mark in_progress immediately' : 'pending'})`);
+          const statusNote = t.status === 'in_progress' ? '→ then call TaskUpdate to set in_progress' : '';
+          lines.push(`  TaskCreate: "${t.step}" ${statusNote}`);
         }
-        lines.push('This restores task tracking after session resume. Create tasks BEFORE doing any other work.');
+        lines.push('');
+        lines.push('Do this NOW. The task list must be visible in the conversation before you resume work.');
+        lines.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       }
     }
 
