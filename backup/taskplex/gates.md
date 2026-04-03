@@ -21,7 +21,7 @@ Design phase gates enforce staged user interaction during the init → brief flo
 | `planning-active` | All artifacts | None — past design | all |
 
 **Light mode** skips: `convention-check`, `approach-review`, `design-approval`.
-**`--skip-design`** jumps directly to `brief-writing` with degradation logged.
+**`--skip-design`** has been removed. If passed, the user is informed and auto-routed to `--light`.
 
 ---
 
@@ -39,7 +39,7 @@ Every gate has a canonical name, verdict enum, validation step, and profile appl
 | `conventionCompliance` | 1b | `passed` / `partial` / `failed` / `N/A` | `validation.conventionCompliance` | all (N/A if no conventions.json) |
 | `security` | 2 | `PASS` / `WARN` / `FAIL` | `validation.security` | all |
 | `closure` | 3 | `PASS` / `FAIL` | `validation.closure` | all |
-| `codeReview` | 4 | `APPROVED` / `NEEDS_REVISION` / `N/A` | `validation.codeReview` | standard, enterprise (N/A for lean) |
+| `codeReview` | 4 | `APPROVED` / `NEEDS_REVISION` / `N/A` | `validation.codeReview` | standard, blueprint, enterprise (N/A for lean/light) |
 | `traceability` | 0.5 | `passed` / `partial` / `failed` / `N/A` | `validation.traceability` | standard, enterprise (N/A for lean) |
 | `readiness` | 7 | `passed` / `failed` / `accepted_risk` / `N/A` | `validation.readiness` | enterprise only (N/A for lean, standard) |
 | `hardening` | 7.5 | `PASS` / `WARN` / `FAIL` / `N/A` | `validation.hardening` | standard, enterprise (N/A for lean) |

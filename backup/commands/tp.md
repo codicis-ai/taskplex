@@ -3,15 +3,14 @@
 Alias for `/taskplex`. Supports all the same flags:
 
 ```
-/tp                                  # asks what to work on + route choice
-/tp [description]                    # asks route choice, then begins
-/tp --standard [description]         # full design, single agent (default)
-/tp --team [description]             # full design, multi-agent execution
-/tp --blueprint [description]        # opus architect + critics + multi-agent + worktrees
-/tp --prd [description]              # blueprint at initiative scale (decomposition + waves)
-/tp --light [description]            # light design
-/tp --skip-design [description]      # no design phase
+/tp                              # asks what to work on + route choice
+/tp [description]                # asks route choice, then begins
+/tp --light [description]        # minimal design, single agent, self-review
+/tp [description]                # full design, multi-agent + critic (default)
+/tp --blueprint [description]    # architect + critics + multi-agent + waves
 ```
+
+Legacy flags: `--standard`, `--team` map to default route. `--prd` maps to blueprint. `--skip-design` removed (use --light or ask directly).
 
 ---
 

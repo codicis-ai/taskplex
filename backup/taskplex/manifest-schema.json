@@ -140,9 +140,8 @@
     },
     "executionMode": {
       "type": "string",
-      "enum": ["standard", "team", "blueprint"],
-      "default": "standard",
-      "description": "Route selection: standard (1 agent), team (1-3 parallel agents), blueprint (opus architect + multi-agent + worktrees). Legacy values (single, parallel, architect, prd) are mapped on read: single→standard, parallel→team, architect→blueprint, prd→blueprint."
+      "enum": ["light", "standard", "blueprint"],
+      "description": "Execution route. light=minimal+single agent, standard=full design+multi-agent+critic (default), blueprint=architect+critics+waves. Legacy values (single, parallel, team, architect, prd) are mapped on read: single→standard, parallel→standard, team→standard, architect→blueprint, prd→blueprint."
     },
     "initiativeMode": {
       "type": "boolean",
@@ -312,7 +311,7 @@
     "implementationDelegated": {
       "type": "boolean",
       "default": false,
-      "description": "Set to true after the orchestrator spawns implementation agents (team/blueprint mode). The implementation gate blocks orchestrator source edits until this is true. For standard mode, this is auto-set to true. For team/blueprint, the orchestrator must set it after dispatching agents."
+      "description": "Set to true after the orchestrator spawns implementation agents. The implementation gate blocks orchestrator source edits until this is true. For light mode, this is auto-set to true. For standard/blueprint (multi-agent), the orchestrator must set it after dispatching agents."
     },
     "implementationAgents": {
       "type": "array",
@@ -550,6 +549,78 @@
         "patterns": { "type": "integer", "default": 0 },
         "decisions": { "type": "integer", "default": 0 }
       }
+    },
+    "completenessCheck": {
+      "type": "object",
+      "default": null,
+      "description": "Tracks API-to-frontend coverage. Populated during QA phase.",
+      "properties": {
+        "endpointsAdded": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "API routes added during this task"
+        },
+        "frontendConsumers": {
+          "type": "object",
+          "default": {},
+          "description": "Map of endpoint -> frontend file that calls it. Null value = gap."
+        },
+        "gapCount": {
+          "type": "integer",
+          "default": 0,
+          "description": "Number of endpoints without frontend consumers"
+        },
+        "journeysTotal": {
+          "type": "integer",
+          "default": 0
+        },
+        "journeysComplete": {
+          "type": "integer",
+          "default": 0
+        },
+        "smellTestPassed": {
+          "type": "boolean",
+          "default": false,
+          "description": "True only after product smell test passes"
+        }
+      }
+    },
+    "frontendParity": {
+      "type": "object",
+      "default": null,
+      "properties": {
+        "detected": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Frontend directories detected in project (mobile/, dashboard/, etc.)"
+        },
+        "required": {
+          "type": "boolean",
+          "default": false,
+          "description": "True if task adds API endpoints and frontends exist"
+        }
+      }
+    },
+    "waveProgress": {
+      "type": ["object", "null"],
+      "default": null,
+      "description": "Per-wave progress tracking for Blueprint execution. Each key is a wave ID.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "status": { "type": "string", "enum": ["pending", "in-progress", "completed", "failed"] },
+          "features": { "type": "array", "items": { "type": "string" } },
+          "validation": { "type": ["object", "null"] },
+          "filesModified": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "lastProgressNoteToolCall": {
+      "type": "integer",
+      "default": 0,
+      "description": "toolCallCount at the time of last progressNote append. Used by heartbeat to detect staleness."
     },
     "failures": { "type": "array" },
     "sessionFile": { "type": ["string", "null"] },

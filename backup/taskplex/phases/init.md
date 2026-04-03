@@ -21,13 +21,13 @@ Parse any explicit flags from the invocation:
 
 | Flag | Route | Design Depth | Notes |
 |------|-------|-------------|-------|
-| `--standard` or `--full` | Standard | full | Full design, single agent *(default)* |
-| `--team` or `--parallel` | Team | full | Full design, multi-agent execution |
-| `--blueprint` or `--architect` or `--deep` | Blueprint | full | Opus architect + critics + multi-agent + worktrees |
-| `--prd` | Blueprint | full | Blueprint + initiative mode (decomposition + waves) |
-| `--light` | Standard | light | Reduced design depth (fewer questions) |
-| `--skip-design` | Standard | skip | No design phase, logs degradation |
+| `--light` | Light | light | Minimal design, single agent, self-review |
+| *(no flag)* or `--standard` or `--team` | Standard | full | Full design, multi-agent parallel, tactical critic *(default)* |
+| `--blueprint` or `--architect` or `--deep` or `--prd` | Blueprint | full | Opus architect + strategic/tactical critics + multi-agent + waves |
+| `--skip-design` | **REMOVED** | — | Simple tasks don't need /tp. Non-trivial auto-routes to --light. |
 | `--plan PLAN-{id}` | (any) | (any) | Use existing plan file |
+
+**Backward compatibility**: `--standard` and `--team` both map to the default route. `--prd` maps to `--blueprint`. `--skip-design` informs user and auto-routes to `--light`.
 
 **If explicit flags were provided**: use them directly. Skip the menu.
 
@@ -35,24 +35,43 @@ Parse any explicit flags from the invocation:
 > `AskUserQuestion`:
 > "How would you like to approach this?
 >
-> 1. **Standard** — full design, single agent *(default)*
-> 2. **Team** — full design, multi-agent execution
-> 3. **Blueprint** — opus architect + critics + multi-agent + worktrees
+> 1. **Light** — minimal design, single agent. For clear tasks with known scope.
+> 2. **Standard** — full design, multi-agent parallel, critic review *(default)*
+> 3. **Blueprint** — opus architect + critics + multi-agent + waves. For major initiatives.
 >
 > Pick a number, or press Enter for Standard."
 
 Map the user's choice:
-- 1 or Enter/default → Standard
-- 2 → Team
+- 1 → Light
+- 2 or Enter/default → Standard
 - 3 → Blueprint
 
 Set `manifest.designDepth` to `"light"` or `"full"`.
-Set `manifest.executionMode` to `"standard"`, `"team"`, or `"blueprint"`.
-If `--prd` was used: also set `manifest.initiativeMode = true`.
+Set `manifest.executionMode` to `"light"`, `"standard"`, or `"blueprint"`.
+`--prd` is an alias for `--blueprint`. The architect determines wave decomposition based on scope — no separate initiativeMode flag needed.
 
-**Backward compatibility**: If resuming a task with legacy `executionMode` values, map them: `single→standard`, `parallel→team`, `architect→blueprint`, `prd→blueprint` (with `initiativeMode: true`).
+**Backward compatibility**: If resuming a task with legacy `executionMode` values, map them: `single→standard`, `parallel→standard`, `team→standard`, `architect→blueprint`, `prd→blueprint`.
 
 **Mid-flow escape:** If the user says "just do it", "skip design", or similar during Sub-phase B, switch from full to light immediately and write a minimal brief.
+
+### Autonomous Execution Clarification
+
+When the user says "autonomous", "no stopping", "just do it", "run everything":
+
+**Autonomous mode = DECISION autonomy, NOT process shortcuts.**
+
+- ✅ DO: Make all design decisions independently (approach, naming, file structure)
+- ✅ DO: Run all phases without pausing for user confirmation at each step
+- ✅ DO: Choose approaches, resolve ambiguities, pick tradeoffs independently
+- ❌ DO NOT: Skip quality gates (QA, validation, journey verification)
+- ❌ DO NOT: Skip frontend parity checks
+- ❌ DO NOT: Skip the product smell test
+- ❌ DO NOT: Interpret "fast" as "skip steps"
+- ❌ DO NOT: Skip the design phase entirely (--skip-design has been removed)
+
+In autonomous mode, the orchestrator runs the FULL workflow but makes all decisions that would normally require user input. The user is informed of decisions made, not asked for them.
+
+In autonomous mode, --light is the minimum design depth. The orchestrator never skips design entirely.
 
 ---
 
@@ -80,7 +99,7 @@ If `--prd` was used: also set `manifest.initiativeMode = true`.
   "phase": "init",
   "status": "in-progress",
   "designDepth": "light|full",
-  "executionMode": "standard|team|blueprint",
+  "executionMode": "light|standard|blueprint",
   "initiativeMode": false,
   "designPhase": "convention-scan",
   "createdAt": "ISO timestamp",
@@ -114,7 +133,7 @@ Create `~/.claude/sessions/sess-{pid}.json` for the 3D visualizer:
   "pid": "{process pid}",
   "phase": "init",
   "designDepth": "light|full",
-  "executionMode": "standard|team|blueprint",
+  "executionMode": "light|standard|blueprint",
   "initiativeMode": false,
   "status": "in-progress",
   "workflow": "taskplex",
@@ -206,7 +225,7 @@ Set `manifest.memplexNoticeShown = true` to avoid repeating.
 **Only triggered by explicit user intent.** Do NOT scan for ambient PRD files in the project.
 
 **Detection triggers** — ONLY these:
-1. `--prd` flag → set `manifest.executionMode = "blueprint"` + `manifest.initiativeMode = true`, then read `~/.claude/taskplex/phases/planning.md` (Blueprint: Initiative Mode section)
+1. `--prd` flag → alias for `--blueprint`. Set `manifest.executionMode = "blueprint"`. The architect determines wave decomposition based on scope. Read `~/.claude/taskplex/phases/planning.md` (Blueprint section).
 2. `--plan PLAN-{id}` argument
 3. User explicitly references a PRD/plan file in their task description (e.g., `/tp implement PRD-auth.md`)
 
@@ -578,21 +597,46 @@ After the brief is confirmed:
 
 Lean profile: skip this note.
 
-### If `--skip-design` was specified
+### Light Mode Scope Guard (MANDATORY — runs for all --light tasks)
 
-Log degradation:
-```json
-{ "type": "skip", "phase": "init", "reason": "User chose to skip design phase (--skip-design)", "timestamp": "ISO" }
-```
-Set `manifest.designPhase = "brief-writing"`. Write a minimal brief.md from the task description (no user interaction). Proceed directly to planning.
+Before writing the minimal brief, run this 30-second automated check:
+
+1. **Feature count check**: Count features in task description (numbered lists, F1/F2/F3 patterns, "multiple", "all", "complete", "full", "entire").
+   - If feature_count > 3: **AUTO-UPGRADE to standard**. Log degradation:
+     ```json
+     { "type": "auto-upgrade", "phase": "init", "reason": "Task has {N} features — too complex for light. Auto-upgraded to standard.", "timestamp": "ISO" }
+     ```
+     Set `manifest.designDepth = "full"`. Continue with standard design flow.
+   - If feature_count <= 3: Continue with light design flow.
+
+2. **Frontend surface detection** (runs for ALL light tasks, even single-feature):
+   - Check if `mobile/`, `dashboard/`, `web/`, or `frontend/` directories exist in project root
+   - If frontends exist AND task description mentions API routes, endpoints, or backend features:
+     - Auto-append to the minimal brief: "Frontend integration required. New API endpoints must have corresponding screens/pages in: {detected frontends}."
+     - Set `manifest.frontendParity = { detected: ["mobile", "dashboard"], required: true }`
+   - If no frontends detected: Set `manifest.frontendParity = { detected: [], required: false }`
+
+### If --skip-design was specified (REMOVED FLAG)
+
+The `--skip-design` flag has been removed. If the user passes `--skip-design`:
+
+1. Inform the user: "--skip-design has been removed. For simple tasks (single file fix, config change), just describe what you need without /tp. For tasks that need /tp, --light is the minimum entry point."
+
+2. Assess the task description:
+   - If clearly simple (single file, typo, config): Tell the user to just ask directly without /tp. Exit the TaskPlex flow.
+   - If non-trivial: Auto-route to `--light`. Set `manifest.designDepth = "light"`. Log degradation:
+     ```json
+     { "type": "auto-upgrade", "phase": "init", "reason": "User passed --skip-design (removed flag). Auto-routed to --light.", "timestamp": "ISO" }
+     ```
+   - Continue with light design flow.
 
 ---
 
 ## Step 5: Quality Profile Selection
 
 Default profile by route:
+- Light → `lean`
 - Standard → `standard`
-- Team → `standard`
 - Blueprint → `enterprise`
 - If task description is trivial (single file, obvious fix) → `lean`
 

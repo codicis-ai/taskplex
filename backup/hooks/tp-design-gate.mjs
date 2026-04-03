@@ -68,12 +68,13 @@ async function main() {
 
     const phase = manifest.phase || 'init';
 
-    // === Implementation gate: block orchestrator source edits in team/blueprint ===
-    // In team/blueprint mode, the orchestrator must delegate to agents, not code directly.
+    // === Implementation gate: block orchestrator source edits in standard/blueprint ===
+    // In standard/blueprint mode, the orchestrator must delegate to agents, not code directly.
     // If manifest.implementationDelegated is not true, the orchestrator hasn't spawned agents yet.
     if (phase === 'implementation' || phase === 'qa') {
       const execMode = manifest.executionMode || 'standard';
-      if (execMode === 'team' || execMode === 'blueprint') {
+      // Standard and blueprint both use multi-agent execution (team absorbed into standard)
+      if (execMode === 'standard' || execMode === 'team' || execMode === 'blueprint') {
         const toolInput = hookInput.tool_input || {};
         const filePath = toolInput.file_path || toolInput.path || '';
         const normalizedPath = filePath.replace(/\\/g, '/').toLowerCase();
@@ -84,16 +85,50 @@ async function main() {
             denyTool(
               `TaskPlex implementation gate: Source file edits blocked.\n` +
               `Execution mode: ${execMode} — the orchestrator must delegate to agents, not implement directly.\n` +
-              `Spawn implementation agents per ~/.claude/taskplex/phases/planning.md (${execMode === 'blueprint' ? 'Blueprint' : 'Team'} route).\n` +
-              `${execMode === 'blueprint' ? 'Use isolation: "worktree" for each agent.\n' : ''}` +
+              `Spawn implementation agents per ~/.claude/taskplex/phases/planning.md.\n` +
+              `Use isolation: "worktree" for each agent.\n` +
               `After spawning, set manifest.implementationDelegated = true to unlock orchestrator edits.\n\n` +
               `If this is a post-agent fix (build-fixer, review fix), set manifest.implementationDelegated = true first.`
             );
             return;
           }
         }
+
+        // === Wave gate (blueprint only): block next wave until current wave validated ===
+        if (execMode === 'blueprint' && manifest.waveProgress) {
+          const waves = manifest.waveProgress;
+          const waveIds = Object.keys(waves).sort();
+
+          for (let i = 1; i < waveIds.length; i++) {
+            const prevWave = waves[waveIds[i - 1]];
+            const currWave = waves[waveIds[i]];
+
+            // If current wave is in-progress but previous wave isn't validated
+            if (currWave && currWave.status === 'in-progress') {
+              if (prevWave && prevWave.status !== 'completed') {
+                denyTool(
+                  `TaskPlex wave gate: Cannot proceed with ${waveIds[i]} (${currWave.name || ''}).\n` +
+                  `Previous wave ${waveIds[i - 1]} (${prevWave.name || ''}) status: ${prevWave.status}.\n` +
+                  `Previous wave must have status "completed" with validation passed before next wave starts.\n\n` +
+                  `Update manifest.waveProgress.${waveIds[i - 1]}.status = "completed" and\n` +
+                  `manifest.waveProgress.${waveIds[i - 1]}.validation = { "passed": true, ... } first.`
+                );
+                return;
+              }
+              if (prevWave && prevWave.validation && prevWave.validation.passed === false) {
+                denyTool(
+                  `TaskPlex wave gate: Cannot proceed with ${waveIds[i]}.\n` +
+                  `Previous wave ${waveIds[i - 1]} validation FAILED.\n` +
+                  `Fix validation issues in ${waveIds[i - 1]} before starting ${waveIds[i]}.\n\n` +
+                  `Validation details: ${JSON.stringify(prevWave.validation)}`
+                );
+                return;
+              }
+            }
+          }
+        }
       }
-      // Past the implementation gate check — allow (not in design phase)
+      // Past the implementation + wave gate checks — allow
       allowTool();
       return;
     }

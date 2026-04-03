@@ -17,7 +17,7 @@ Collect from three sources — do NOT ask the user anything the documentation al
 **Source A — Invocation context:**
 - Task description from `/tp` invocation (if any)
 - Referenced files (`--plan`, PRD, pasted content)
-- Flags that signal intent (`--prd` = initiative-scale, `--blueprint` = complex)
+- Flags that signal intent (`--blueprint` = complex, architect-driven wave decomposition)
 
 **Source B — Project documentation:**
 - `README.md` — project purpose, audience, usage

@@ -2,6 +2,7 @@
 <!-- Loaded by orchestrator after initialization. Self-contained. -->
 <!-- v3: 3-route architecture (Standard/Team/Blueprint) with universal planning agent -->
 <!-- v4: Added progress visibility, inline artifact presentation, pre-spawn status messages -->
+<!-- v5: Collapsed to 3 routes (Light/Standard/Blueprint). Standard absorbs Team (multi-agent + mandatory critic). -->
 
 **Policy reference**: `~/.claude/taskplex/policy.json` for iteration limits.
 
@@ -46,13 +47,13 @@ The route was set during init from user flags. Read `manifest.executionMode`:
 
 | Route | When | What happens |
 |-------|------|--------------|
-| `standard` | Default | Planning agent writes spec → spec critic → 1 implementation agent |
-| `team` | `--team` or `--parallel` flag | Planning agent writes spec + sections → spec critic → 1-3 implementation agents |
-| `blueprint` | `--blueprint`, `--architect`, or `--deep` flag | Opus architect → critics → multi-agent implementation + worktrees |
+| `light` | `--light` flag | Orchestrator writes minimal spec → single implementation agent → self-review |
+| `standard` | Default (no flag, or `--standard`/`--team`) | Planning agent writes spec + sections → spec critic → 1-3 implementation agents (multi-agent parallel) → mandatory tactical critic |
+| `blueprint` | `--blueprint`, `--architect`, or `--deep` flag | Opus architect → strategic + tactical critics → multi-agent implementation + worktrees + waves |
 
-**Legacy mapping**: If `manifest.executionMode` contains old values, map them: `single→standard`, `parallel→team`, `architect→blueprint`, `prd→blueprint` (with `initiativeMode: true`).
+**Legacy mapping**: If `manifest.executionMode` contains old values, map them: `single→standard`, `parallel→standard`, `team→standard`, `architect→blueprint`, `prd→blueprint`.
 
-If `manifest.initiativeMode === true`: read the "Blueprint: Initiative Mode" section below.
+If the architect determines the scope warrants wave decomposition: read the "Blueprint: Initiative Mode" section below. The architect controls this decision — there is no separate `initiativeMode` flag.
 
 ---
 
@@ -73,9 +74,9 @@ If `manifest.initiativeMode === true`: read the "Blueprint: Initiative Mode" sec
 - ✅ Run all agents, merge results, then proceed to QA/validation — uninterrupted
 - ✅ Only stop for: blocking failure, iteration limit reached, or agent escalation that needs user input
 
-**For Team/Blueprint routes specifically:**
+**For Standard/Blueprint routes (multi-agent) specifically:**
 - All independent workers dispatch in **one message** using parallel tool calls
-- Each worker MUST use `isolation: "worktree"` (Blueprint) or shared workspace with file ownership (Team)
+- Each worker MUST use `isolation: "worktree"` (Blueprint) or shared workspace with file ownership (Standard)
 - After all workers return, merge and proceed to build check → QA → validation — no pause
 
 The user trusted the plan when they approved it. Implementation executes that plan. The next user interaction is at completion (git/PR) or if something breaks.
@@ -117,20 +118,100 @@ The user trusted the plan when they approved it. Implementation executes that pl
 
 ---
 
+## Frontend Parity Rule (MANDATORY for architect prompts)
+
+Before spawning the architect (or planning agent), check `manifest.frontendParity.required`. If true:
+
+1. Include in the architect prompt: "This project has frontends at: {paths}. EVERY new API endpoint MUST have a corresponding frontend task (screen/page/component). Acceptance criteria MUST include user-facing ACs in Given/When/Then format for each endpoint that has a user surface."
+
+2. The architect's spec MUST NOT contain API endpoints without corresponding frontend work UNLESS the endpoint is explicitly marked as `internal/background` (e.g., webhook handlers, scheduled jobs, agent-only endpoints).
+
+3. The orchestrator MUST verify the spec before spawning workers: count API endpoints vs frontend tasks. If ratio < 0.5 (fewer than half the endpoints have frontend work), flag and add frontend tasks.
+
+---
+
+## Light Route
+
+### Phase A: Minimal Planning
+
+The orchestrator writes a minimal spec directly (no planning agent spawn). This is for clear tasks with known scope.
+
+1. **Write spec.md** inline: The orchestrator reads brief.md and writes a minimal spec with:
+   - Files to modify/create
+   - Key changes per file
+   - Acceptance criteria from brief
+
+Set `manifest.planFile = "spec.md"`.
+
+### Phase A.3: Pre-Implementation Acknowledgment (MANDATORY)
+
+Same gate as other routes — present spec to user, get approval. But the spec is shorter.
+
+1. Present the minimal spec in the conversation.
+2. Ask: **Proceed** / **Discuss changes**
+3. Set `planSource.userAcknowledged = true` and `workflowState.standardPlanning.executionAuthorized = true`.
+
+### Phase A.4: Refine Task List (MANDATORY)
+
+**Step 1 — Delete the placeholder** "Implementation" task.
+
+**Step 2 — Create specific tasks:**
+```
+TaskCreate: "Implement — {summary of spec, N files}"
+TaskCreate: "Self-review — verify changes match brief"
+TaskCreate: "Build gate — typecheck + lint"
+```
+
+### Phase B: Single-Agent Implementation
+
+**⚠️ Set `manifest.implementationDelegated = true`** immediately.
+
+1. **Lean profile (simple tasks)**: Implement directly inline.
+   - Compaction guard monitors context growth
+   - If compaction guard triggers: delegate to implementation agent
+
+2. **Standard profile**: Spawn implementation agent.
+   **Before spawning**: Run Memplex Context Assembly for the spec's primary files.
+   > Spawn implementation-agent (sonnet) from ~/.claude/agents/core/implementation-agent.md
+     Context: "Read your spec at .claude-task/{taskId}/spec.md. Implement the plan." + Known Context block (if memplex available)
+     max_turns: 25
+     Writes: source code changes, deferred items
+     Returns: "STATUS: completed|blocked. FILES_MODIFIED: [...]. BUILD: pass|fail."
+
+3. **Self-review** (no agent spawn — orchestrator checks inline):
+   - Do modified files compile? (run build commands)
+   - Do changes match the brief's ACs?
+   - Any orphaned endpoints? (if frontend parity required)
+   Quick 30-second check. If issues found, fix inline.
+
+4. **Build gate**: Run typecheck + lint + tests. Build-fix rounds per policy `limits.buildFixRounds`.
+
+5. **Convention scan**: Read conventions.json or CONVENTIONS.md. Grep modified files for violations. Fix inline. Budget: 3-6 Grep calls.
+
+6. **Update documentation** (if needed — same rules as Standard route).
+
+**Git notes**: No incremental commits. One commit at completion.
+
+7. **Proceed to QA**: Read `~/.claude/taskplex/phases/qa.md`
+
+---
+
 ## Standard Route
 
-### Phase A: Planning Agent
+### Phase A: Planning Agent with Section Assignment
 
 **Pre-spawn status** (tell the user what's happening):
 > "Spawning the planning agent to design the implementation. This typically takes 3-8 minutes.
-> The agent will read the brief, analyze the target area, and write a detailed spec."
+> The agent will read the brief, analyze the target area, write a detailed spec, and assign sections for parallel execution."
 
 **Before spawning**: Run Memplex Context Assembly (see section above) for the target area files from brief.md.
 
+Spawn the planning agent in multi-agent mode. The planning agent identifies independent sections and writes file ownership.
+
 > Spawn planning-agent (sonnet) from ~/.claude/agents/core/planning-agent.md
-  Context: brief.md path, taskId, designDepth, qualityProfile + Known Context block (if memplex available)
-  Writes: .claude-task/{taskId}/spec.md, .claude-task/{taskId}/conventions-snapshot.json
-  Returns: "PLANNING COMPLETE. Spec: {path}. Files affected: {N}. Key decisions: {bullets}"
+  Context: brief.md path, taskId, designDepth, qualityProfile, mode: "multi-agent"
+  Writes: .claude-task/{taskId}/spec.md, .claude-task/{taskId}/sections.json, .claude-task/{taskId}/file-ownership.json, .claude-task/{taskId}/conventions-snapshot.json
+  Returns: "PLANNING COMPLETE. Spec: {path}. Sections: {N}. Files affected: {N}. Key decisions: {bullets}"
 
 Set `manifest.planFile = "spec.md"`.
 
@@ -160,7 +241,7 @@ After researcher returns: **present key findings inline** (don't just say "resea
 After planning agent returns, spawn a spec reviewer:
 
 > Spawn closure-agent (haiku) from ~/.claude/agents/core/closure-agent.md
-  Context: spec.md, brief.md, CONVENTIONS.md — review spec against brief requirements, not code
+  Context: spec.md, sections.json, brief.md, CONVENTIONS.md — review spec + section assignments against brief requirements
   Returns: "Verdict: APPROVED|NEEDS_REVISION"
 
 Track in `manifest.iterationCounts.reviewRounds.specCritic`.
@@ -176,6 +257,7 @@ Track in `manifest.iterationCounts.reviewRounds.specCritic`.
 2. **Present the full spec in the conversation**, section by section:
    - Implementation approach and rationale
    - Files to create/modify (with purpose of each)
+   - Section assignments for parallel workers
    - Key technical decisions
    - Acceptance criteria mapping
    - Testing strategy
@@ -196,23 +278,14 @@ Set `planSource.userAcknowledged = true` and `workflowState.standardPlanning.exe
 
 **Step 1 — Delete the placeholder** "Implementation" task (TaskUpdate with status: deleted).
 
-**Step 2 — Create specific implementation tasks based on the route:**
-
-For Standard route, call TaskCreate for each:
-```
-TaskCreate: "Implement — {summary of spec, N files}" 
-TaskCreate: "Coherence check — verify code matches spec"
-TaskCreate: "Build gate — typecheck + lint + tests"
-TaskCreate: "Update documentation" (if API/README/config changed)
-```
-
-For Team route, call TaskCreate for each:
+**Step 2 — Create specific implementation tasks:**
 ```
 TaskCreate: "Worker 1: {section title} — {file count} files"
 TaskCreate: "Worker 2: {section title} — {file count} files"
 TaskCreate: "Worker 3: {section title} — {file count} files" (if applicable)
 TaskCreate: "Coherence check — verify each worker matches spec"
 TaskCreate: "Merge workers + build gate"
+TaskCreate: "Tactical critic review"
 TaskCreate: "Update documentation"
 ```
 
@@ -224,6 +297,7 @@ TaskCreate: "Worker 2: {section title} (worktree)"
 TaskCreate: "Worker 3: {section title} (worktree)" (if applicable)
 TaskCreate: "Coherence check — verify each worker matches spec"
 TaskCreate: "Merge worktrees + build gate"
+TaskCreate: "Tactical critic review"
 TaskCreate: "Update documentation"
 ```
 
@@ -243,90 +317,13 @@ TaskUpdate: "Validation" → "Validation — {profile} profile ({N} gates)"
 
 **The user must see the refined task list before implementation begins.** This is their view into what's about to happen.
 
-### Phase B: Implementation
-
-**⚠️ Set `manifest.implementationDelegated = true`** immediately for Standard route (orchestrator may implement inline for lean, or delegates to a single agent). The implementation gate hook allows orchestrator edits when this flag is set.
-
-1. **Lean profile (simple tasks)**: Implement directly inline.
-   - Compaction guard monitors context growth
-   - If compaction guard triggers: delegate to implementation agent
-
-2. **Standard+ profile**: Spawn implementation agent.
-   **Before spawning**: Run Memplex Context Assembly for the spec's primary files.
-   > Spawn implementation-agent (sonnet) from ~/.claude/agents/core/implementation-agent.md
-     Context: "Read your spec at .claude-task/{taskId}/spec.md. Implement the plan." + Known Context block (if memplex available)
-     max_turns: 25
-     Writes: source code changes, deferred items
-     Returns: "STATUS: completed|blocked. FILES_MODIFIED: [...]. BUILD: pass|fail."
-
-3. **Implementation coherence check** (fast, before build gate):
-   Verify the agent implemented what the spec asked for — catches design drift before it compounds.
-   > Spawn closure-agent (haiku) from ~/.claude/agents/core/closure-agent.md
-     Context: spec.md (relevant section), manifest.modifiedFiles, brief.md acceptance criteria
-     Scope: "Quick coherence check — does the implementation match the spec? Not a full closure review."
-     Returns: "COHERENT" or "DRIFT: {what's missing or wrong}"
-
-   - If **COHERENT**: proceed to build gate
-   - If **DRIFT**: feed drift description back to the implementation agent for ONE revision round, then re-check. Max 1 revision — if still drifting, log to `manifest.degradations` and proceed (full closure at validation will catch it)
-   - **Budget**: one haiku call (~2-3 seconds). Not a bottleneck.
-
-4. **Build gate**: Run typecheck + lint + tests. Build-fix rounds per policy `limits.buildFixRounds`.
-
-5. **Convention scan** (lean only): Read conventions.json or CONVENTIONS.md. Grep modified files for violations. Fix inline. Budget: 3-6 Grep calls.
-
-6. **Update documentation** (if docs task exists in task list):
-   Based on `manifest.modifiedFiles`, update relevant documentation:
-   - API routes modified → update API docs (README, OpenAPI spec, or dedicated docs)
-   - New feature added → add to README features section
-   - Config/env changed → update setup/installation instructions
-   - DB schema changed → update migration notes
-   - CHANGELOG exists → add entry for this change
-   - Mark the docs task as `completed` when done. If no docs needed, mark as `completed` with note "no docs changes required".
-
-**Git notes**: No incremental commits. One commit at completion.
-
-6. **Proceed to QA**: Read `~/.claude/taskplex/phases/qa.md`
-
----
-
-## Team Route
-
-### Phase A: Planning Agent with Section Assignment
-
-Spawn the planning agent in Team mode. The planning agent identifies independent sections and writes file ownership.
-
-> Spawn planning-agent (sonnet) from ~/.claude/agents/core/planning-agent.md
-  Context: brief.md path, taskId, designDepth, qualityProfile, mode: "team"
-  Writes: .claude-task/{taskId}/spec.md, .claude-task/{taskId}/sections.json, .claude-task/{taskId}/file-ownership.json, .claude-task/{taskId}/conventions-snapshot.json
-  Returns: "PLANNING COMPLETE. Spec: {path}. Sections: {N}. Files affected: {N}."
-
-Set `manifest.planFile = "spec.md"`.
-
-### Phase A.1: Research (conditional)
-
-Same as Standard route — see above.
-
-### Phase A.2: Spec Critic (mandatory)
-
-> Spawn closure-agent (haiku) from ~/.claude/agents/core/closure-agent.md
-  Context: spec.md, sections.json, brief.md, CONVENTIONS.md — review spec + section assignments against brief requirements
-  Returns: "Verdict: APPROVED|NEEDS_REVISION"
-
-Track in `manifest.iterationCounts.reviewRounds.specCritic`.
-
-Same revision loop as Standard route (max 2 rounds).
-
-### Phase A.3: Pre-Implementation Acknowledgment (MANDATORY)
-
-Same as Standard route.
-
 ### Phase B: Multi-Agent Implementation
 
-**⚠️ HARD RULES (Team implementation)**:
+**⚠️ HARD RULES (Standard multi-agent implementation)**:
 1. The orchestrator MUST NOT edit source code directly — delegate to agents
 2. Independent agents MUST be dispatched in a **single message** (parallel Agent tool calls)
 3. Do NOT pause between agent dispatches — see Execution Continuity Rule above
-4. Run straight through: dispatch all agents → merge → build check → QA → validation
+4. Run straight through: dispatch all agents → merge → build check → tactical critic → QA → validation
 5. The `tp-design-gate` hook blocks orchestrator source edits until `manifest.implementationDelegated = true`
 
 **Handoff contract**: `~/.claude/taskplex/handoff-contract.md` — structured format for all agent transitions.
@@ -387,11 +384,117 @@ Same as Standard route.
    - If DRIFT on any worker: one revision round for that worker, then proceed
    - Workers can be coherence-checked in parallel (one haiku call each)
 
-4. **Build gate** (after all agents return + coherence verified): Run typecheck + lint + tests. If failures, spawn build-fixer (max rounds per policy). This catches integration issues between workers before moving to QA.
+4. **Build gate** (after all agents return + coherence verified): Run typecheck + lint + tests. If failures, spawn build-fixer (max rounds per policy). This catches integration issues between workers before moving to critic review.
 
-5. **Update documentation** (same as Standard route step 6 — update docs based on modified files).
+5. **Tactical critic review** (MANDATORY — see Critic Review section below).
 
-6. **Proceed to QA → Full Validation**: Read `~/.claude/taskplex/phases/qa.md`, then `~/.claude/taskplex/phases/validation.md`. Full validation runs once after all workers complete and build gate passes.
+6. **Update documentation** (same rules as before — update docs based on modified files).
+
+7. **Proceed to QA → Full Validation**: Read `~/.claude/taskplex/phases/qa.md`, then `~/.claude/taskplex/phases/validation.md`. Full validation runs once after all workers complete and build gate passes.
+
+---
+
+## Critic Review (MANDATORY for Standard and Blueprint routes)
+
+### Standard Route: Tactical Critic
+After implementation completes and build gate passes, spawn a tactical critic agent (sonnet):
+- Reviews all modified files
+- Checks: patterns followed, edge cases handled, tests sufficient, frontend parity
+- Returns: APPROVED or REVISE with specific file-level feedback
+- If REVISE: orchestrator fixes issues, re-runs critic (max 2 cycles)
+
+> Spawn tactical-critic (sonnet) from ~/.claude/agents/core/tactical-critic.md
+  Context: spec.md, manifest.modifiedFiles, brief.md, CONVENTIONS.md
+  Writes: .claude-task/{taskId}/reviews/tactical-review.md
+  Returns: "Verdict: APPROVED|REVISE. {N} issues found."
+
+Track in `manifest.iterationCounts.reviewRounds.tacticalCritic`.
+
+### Blueprint Route: Strategic + Tactical Critics
+- **Strategic critic** runs after architect produces spec (before implementation)
+- **Tactical critic** runs after each wave's implementation
+- Both must approve before proceeding
+
+### Light Route: Self-Review
+No agent spawn. Orchestrator checks:
+1. Do modified files compile?
+2. Do changes match the brief's ACs?
+3. Any orphaned endpoints? (if frontend parity required)
+Quick 30-second check. If issues found, fix inline.
+
+---
+
+## Context Management Philosophy
+
+All task state lives ON DISK, not in the orchestrator's context window.
+
+- `manifest.json` — authoritative task state (phase, progress, wave status)
+- `brief.md` — approved design (survives any compaction)
+- `spec.md` — implementation plan (survives any compaction)
+- `workers/*.md` — agent briefs (survive compaction)
+- `progress.md` — rendered from manifest.progressNotes by heartbeat hook
+- `checkpoints/` — pre-compaction snapshots
+
+The orchestrator's context window is TRANSIENT. Everything important is written to disk.
+After compaction, the orchestrator reads manifest.json and resumes. No information is lost
+IF the manifest is kept current.
+
+**This means**: The context window is NOT a constraint on task size. A 17-feature, 4-wave
+blueprint can execute in a single /tp invocation because the orchestrator reads from disk
+at each phase transition, not from memory of previous phases.
+
+Agents receive their context via prompts (assembled from spec + worker briefs), not from
+the orchestrator's memory. Agent results are written to disk, not held in context.
+
+---
+
+## Mandatory Manifest Updates (ALL ROUTES)
+
+The orchestrator MUST update the manifest at these points. These are NOT optional.
+The heartbeat hook will warn if updates are missed.
+
+### After each design sub-phase completes:
+```json
+manifest.phaseChecklist.{subphase} = "completed"
+manifest.progressNotes.push({
+  "phase": "{phase}",
+  "note": "{what was completed}",
+  "timestamp": "ISO"
+})
+```
+
+### After each wave completes (Blueprint):
+```json
+manifest.waveProgress.{waveId}.status = "completed"
+manifest.waveProgress.{waveId}.validation = { passed: true/false, details: "..." }
+manifest.waveProgress.{waveId}.filesModified = [...]
+manifest.progressNotes.push({
+  "phase": "implementation",
+  "note": "Wave {N} complete: {summary}. Validation: {passed/failed}.",
+  "timestamp": "ISO"
+})
+```
+
+### After each agent returns:
+```json
+manifest.progressNotes.push({
+  "phase": "implementation",
+  "note": "Agent {id} complete: {summary}",
+  "timestamp": "ISO"
+})
+```
+
+### After validation:
+```json
+manifest.phaseChecklist.validation = "completed"
+manifest.progressNotes.push({
+  "phase": "validation",
+  "note": "All gates passed. Journey verification: {X}/{Y}. Smell test: {passed}.",
+  "timestamp": "ISO"
+})
+```
+
+Failure to update these fields means recovery after compaction will have stale state.
 
 ---
 
@@ -509,7 +612,7 @@ If triggered:
 
 ## Blueprint: Initiative Mode
 
-**Activated when**: `manifest.initiativeMode === true` (set by `--prd` flag or multi-feature detection).
+**Activated when**: The architect determines the scope warrants wave decomposition (based on feature count, complexity, and cross-cutting concerns). `--prd` is an alias for `--blueprint` — the architect always evaluates whether initiative mode is appropriate.
 
 Initiative mode is Blueprint at scale — the same opus architect + critics + multi-agent execution, but with feature decomposition, wave-based execution, and cross-feature closure.
 
@@ -583,39 +686,112 @@ After user approves: Set `manifest.designInteraction.prdUserReviewed = true`.
 
 `AskUserQuestion`: "How should features be executed?"
 
-**Interactive mode** (Recommended):
-- Single confirmation per feature before implementation starts
-- User sees progress updates between features
-
-**Autonomous mode**:
-- Critic APPROVED = auto-proceed (no user confirmation)
+**Autonomous mode** (Default for one-shot execution):
+- Critic APPROVED = auto-proceed (no user confirmation between waves)
+- All waves execute back-to-back without stopping
 - Drift from spec is logged but not prompted
+
+**Interactive mode**:
+- Single confirmation per WAVE (not per feature)
+- After the user confirms a wave, all features in that wave execute non-stop
 
 **→ After user confirms, set `manifest.designInteraction.prdExecutionModeChosen = true` and `manifest.designPhase = "planning-active"`**
 
-### Initiative Phase 2d: Branch Strategy
+### Initiative Phase 2d: Branch Strategy + Wave Progress Init
 
 If `manifest.git.available === true` and `manifest.git.config.createBranch === true`:
 - Each wave gets its own branch: `feat/prd-{id}-wave{N}`
 - Wave 0 branch created from `manifest.git.baseBranch`
 - Subsequent wave branches created from the merged result of the previous wave
 
-### Initiative Phase 3: Wave Execution
+**Initialize `manifest.waveProgress`** at this point (MANDATORY):
+```json
+"waveProgress": {
+  "wave-1": { "name": "Wave 1 Name", "status": "pending", "features": ["F1","F2","F3"], "validation": null, "filesModified": [] },
+  "wave-2": { "name": "Wave 2 Name", "status": "pending", "features": ["F4","F5","F6"], "validation": null, "filesModified": [] }
+}
+```
 
-**⚠️ Execution Continuity applies here.** Once wave execution begins, run all waves to completion. Do NOT ask the user between features or between waves unless a blocking failure occurs. The user already approved the plan (Phase 2b) and chose execution mode (Phase 2c).
+## Blueprint Execution: One-Shot Wave Loop
 
-**Interactive mode** means: one confirmation per WAVE (not per feature). After the user confirms a wave, all features in that wave execute non-stop.
+After design approval (strategic critic APPROVED, user confirms), the blueprint enters
+a **continuous execution loop** that runs ALL waves to completion without stopping.
 
-**Autonomous mode** means: no confirmations at all — waves execute back-to-back.
+### The Loop
 
-For each wave (0, 1, 2, ...):
+```
+FOR each wave in architect's spec:
+  1. READ manifest.json (current state — NOT from memory)
+  2. READ spec.md wave section (agent briefs for this wave)
+  3. UPDATE manifest.waveProgress.{waveId}.status = "in-progress"
+  4. SPAWN parallel agents for this wave (worktrees)
+  5. COLLECT agent results (summaries only — details on disk)
+  6. MERGE agent changes into main tree
+  7. UPDATE manifest:
+     - waveProgress.{waveId}.status = "completed"
+     - progressNotes.push(wave summary)
+     - modifiedFiles += new files
+  8. VALIDATE this wave:
+     - Build checks (cargo check / npm run build)
+     - Tests (cargo test / npm test)
+     - Journey verification (new endpoints → frontend consumers?)
+     - Cross-wave check (does this wave's output integrate with previous waves?)
+     - If FAIL: fix inline (up to 2 retries). If still fails: pause and inform user.
+     - If PASS: continue to next wave
+  9. CHECKPOINT: manifest is already on disk (heartbeat updates it continuously)
+END FOR
+```
 
-1. Update `prd-state.json`: set wave status to `in-progress`
-2. **Create wave branch** (if git available + createBranch)
-3. **If Interactive mode AND wave > 0**: Single confirmation: "Wave {N} ready ({features}). Proceed?" — then run non-stop
-4. **If Autonomous mode**: proceed directly, no confirmation
+### Rules
 
-5. **Wave 0** (sequential — foundational features):
+1. **No per-wave approval**: User approved the plan once. Waves execute continuously.
+2. **No per-wave route switching**: Blueprint rigor throughout. Every wave gets the same
+   validation depth.
+3. **No stopping between waves**: After Wave N validation passes, Wave N+1 starts immediately.
+4. **Only stop for**: Validation failure after 2 retries, OR agent escalation, OR user interrupt.
+5. **Read from disk at each wave start**: The orchestrator reads manifest.json and spec.md
+   at the start of each wave. This ensures correct state even if compaction occurred.
+
+### Wave Validation Gate (MANDATORY)
+
+Every wave gets full validation:
+
+1. **Build check**: All crates/packages compile
+2. **Test check**: All tests pass (including new tests from this wave)
+3. **Journey check**: New API endpoints have frontend consumers (if frontendParity.required)
+4. **Cross-wave check**:
+   - Wave N's frontend code correctly calls Wave N-1's API endpoints
+   - Shared types are consistent across waves
+   - No broken imports between wave boundaries
+5. **Regression check**: Previous waves' tests still pass
+
+If any check fails:
+- Attempt inline fix (orchestrator or spawned fixer agent)
+- Re-run failed checks
+- Max 2 fix attempts per wave
+- If still failing after 2 attempts: STOP, inform user with specific failure details
+
+### Cross-Wave Validation
+
+After each wave (starting from Wave 2), verify integration with previous waves:
+
+```
+Wave 2 validation:
+  - Do mobile screens (Wave 2) call the API endpoints added in Wave 1?
+  - Grep mobile code for Wave 1 endpoint paths
+  - If gaps found: add to fix list
+
+Wave 3 validation:
+  - Do dashboard pages (Wave 3) call the same endpoints as mobile (Wave 2)?
+  - Are shared types consistent?
+  - If gaps found: add to fix list
+```
+
+### Wave Agent Dispatch
+
+For each wave:
+
+1. **Wave 0** (sequential — foundational features):
    For each feature in wave 0, dispatch immediately one after another:
    - Update prd-state.json: feature status = `in-progress`
    - Check attempt count (max per policy `limits.prdFeatureAttemptsAutonomous` in autonomous mode)
@@ -628,12 +804,12 @@ For each wave (0, 1, 2, ...):
    - On return: update manifest + prd-state.json, **immediately dispatch next feature**
    - If failed: mark dependent features as `blocked`, continue to next — do NOT stop to ask
 
-6. **Wave 1+** (parallel — independent features):
+2. **Wave 1+** (parallel — independent features):
    - Dispatch ALL features in the wave in a **single message** using parallel Agent tool calls
    - Every agent MUST use `isolation: "worktree"`
-   - After all return: merge, update state, proceed to next wave immediately
+   - After all return: merge, update state, run wave validation, proceed to next wave immediately
 
-### Initiative Phase 4: Wave Merge + Wave Validation
+### Wave Merge
 
 After each wave completes:
 1. List completed feature branches
@@ -644,31 +820,48 @@ After each wave completes:
      Returns: "Merge resolved: {N} files. Typecheck: PASS/FAIL"
    - If unresolvable: mark as `blocked:merge-conflict`, notify user
 
-4. **Wave validation (build gate)** — catches broken foundations before next wave builds on them:
-   - Run typecheck (from `manifest.buildCommands.typecheck`)
-   - Run lint (from `manifest.buildCommands.lint`)
-   - Run tests (from `manifest.buildCommands.test`) — **critical**: if Wave 0 breaks tests, Wave 1 must not proceed
-   - If any fail: spawn build-fixer (max rounds per policy). If still failing after limit, mark wave as `blocked:build-failure`, stop wave execution, present to user.
+4. Update prd-state.json: wave status = `completed`
 
-5. Update prd-state.json: wave status = `completed`
+### Final Validation (after all waves)
 
-**Wave validation is a build gate, not full validation.** It checks: does the merged code compile, pass lint, and pass tests? It does NOT run security review, closure, code review, hardening, or compliance — those run once at the end.
+After the last wave completes and passes validation:
 
-### Initiative Phase 5: Finalization
+1. **Full journey verification**: Trace EVERY acceptance criterion from the brief
+   to working code across ALL waves
+2. **Product smell test**:
+   - Can a user sign up and use every feature?
+   - Does every endpoint have a consumer?
+   - Would I ship this today?
+3. **Tactical critic**: Spawns critic agent to review the ENTIRE changeset
+   (not just last wave)
+4. **Cross-wave integration test**: Run full test suite one final time
+5. **Full Validation Pipeline** — runs ONCE after all waves complete. This is where
+   security review, closure, code review, hardening, and compliance run.
+   See `~/.claude/taskplex/phases/validation.md`.
+6. Generate completion report
+7. If git available: create comprehensive PR covering the entire initiative
+8. Present to user
+9. Clean up: archive prd-state.json
 
-1. **Cross-Feature Intent Check**:
-   > Spawn closure-agent (haiku) from ~/.claude/agents/core/closure-agent.md
-     Context: brief.md, aggregated modifiedFiles from all features, prd.md
-     Writes: .claude-task/PRD-{id}/reviews/cross-feature-closure.md
-     Returns: "PASS" | "FAIL: {what's missing}"
+### Wave Progress in Manifest
 
-   If FAIL: report to user before full validation.
+Initialize at planning time (Phase 2d):
+```json
+"waveProgress": {
+  "wave-1": { "name": "Backend Hardening", "status": "pending", "features": ["F1","F2","F3","F4","F5"], "validation": null, "filesModified": [] },
+  "wave-2": { "name": "Mobile Completion", "status": "pending", "features": ["F6a","F6","F7","F8","F9","F10"], "validation": null, "filesModified": [] },
+  "wave-3": { "name": "Dashboard Completion", "status": "pending", "features": ["F11","F12","F13","F14"], "validation": null, "filesModified": [] },
+  "wave-4": { "name": "CI/CD", "status": "pending", "features": ["F15","F16"], "validation": null, "filesModified": [] }
+}
+```
 
-2. **Full Validation Pipeline** — runs ONCE after all waves complete. This is where security review, closure, code review, hardening, and compliance run. See `~/.claude/taskplex/phases/validation.md`.
-3. Generate completion report
-4. If git available: create comprehensive PR covering the entire initiative
-5. Present to user
-6. Clean up: archive prd-state.json
+Update after each wave completes:
+```json
+"waveProgress": {
+  "wave-1": { "status": "completed", "validation": { "build": "pass", "tests": "pass", "journeys": "8/8", "crossWave": "n/a" }, "filesModified": ["core/src/vps.rs", "..."] },
+  "wave-2": { "status": "in-progress", "..." : "..." }
+}
+```
 
 ### Initiative prd-state.json Schema
 

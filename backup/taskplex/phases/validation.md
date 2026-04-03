@@ -2,7 +2,26 @@
 <!-- Loaded by orchestrator after QA (Phase 4.5). Self-contained. -->
 <!-- v2: Three-stage validation — Reviews → Hardening → Completion -->
 
-**The validation pipeline runs after QA for EVERY execution mode.** It is the fan-in aggregation point — all parallel work converges here. The pipeline adapts based on quality profile.
+**The validation pipeline runs after QA for EVERY execution mode.** It is the fan-in aggregation point — all parallel work converges here. The pipeline adapts based on quality profile and route.
+
+## Validation Depth by Route
+
+### Light Route
+- Build checks (cargo check / npm run build / etc.)
+- AC verification (do files exist that satisfy each acceptance criterion?)
+
+### Standard Route
+- Build checks
+- AC verification
+- **Tactical critic review** (mandatory — already ran in planning phase)
+- **Journey verification** (trace ACs to code, detect orphaned endpoints)
+- **Product smell test** (4 questions)
+
+### Blueprint Route
+- All of the above
+- **Per-wave QA gate** (each wave validated before next begins)
+- **Cross-wave integration check** (do waves work together?)
+- **Strategic coherence check** (does final result match architect's spec?)
 
 **QA context**: If `manifest.qa.status` exists and is not "skipped", read `.claude-task/{taskId}/qa-report.md` and pass unresolved issues to the code review agent so it has context about known QA findings.
 
@@ -140,7 +159,7 @@ Update manifest: `validation.security`.
 
 Update manifest: `validation.closure`.
 
-## Step 4: Code Review (Standard + Team + Blueprint routes — skip for lean profile)
+## Step 4: Code Review (Standard + Blueprint routes — skip for lean profile)
 
 > Spawn code-reviewer (sonnet) from ~/.claude/agents/core/code-reviewer.md
   Context: task intent, spec.md, changed files list, CONVENTIONS.md, CLAUDE.md
@@ -232,6 +251,47 @@ Log degradation. Present escalation to user with resolution options.
 Write `readiness.json` with verdict logic: All PASS → PASS, Any FAIL → FAIL, WARN with approval → PASS_WITH_ACCEPTED_RISK.
 
 Update manifest: `validation.readiness`.
+
+---
+
+## Journey Verification (MANDATORY — runs after implementation, before validation sign-off)
+
+### Step 1: Trace user journeys to code
+For EACH user story or acceptance criterion in the brief:
+1. Identify the API endpoint(s) involved
+2. Verify the endpoint handler exists (grep for route path)
+3. If `manifest.frontendParity.required`:
+   - Verify a frontend file references the endpoint (grep frontend dirs for the API path)
+   - If no frontend consumer found: **JOURNEY BROKEN** — log gap
+
+### Step 2: Detect orphaned endpoints
+1. Grep all new routes added during this task (diff against manifest.modifiedFiles)
+2. For each new route: check if ANY frontend file references it
+3. Orphaned endpoints (no consumer) are logged as gaps
+
+### Step 3: Report
+The orchestrator MUST output:
+```
+Journey Verification:
+- Endpoints added: {N}
+- Frontend consumers found: {M}
+- Orphaned endpoints: {N-M}
+- User journeys traced: {J_total}
+- Journeys complete: {J_complete}
+- Journeys with gaps: {J_gaps}
+```
+
+If `J_gaps > 0`: QA FAILS. Return to implementation with gap list.
+If `J_gaps == 0`: QA PASSES. Proceed to validation.
+
+### Step 4: Product Smell Test
+Before declaring the task complete, the orchestrator asks:
+1. "If I were a new user, could I use every feature I just built?"
+2. "Does every API endpoint have at least one consumer?"
+3. "Can I trace a user action to a visible result on every platform?"
+4. "Would I ship this to a paying user today?"
+
+If ANY answer is "no": task is NOT complete. Return to implementation.
 
 ---
 
@@ -429,7 +489,7 @@ Present a single consolidated summary:
 
 ```
 Task Complete: {task description}
-Profile: {lean|standard|enterprise} | Route: {standard|team|blueprint}
+Profile: {lean|standard|enterprise} | Route: {light|standard|blueprint}
 
 Requirements: {covered}/{total} met ({partial} partial)
 Build:        {PASS|FAIL} — typecheck {status}, lint {status}, tests {status}

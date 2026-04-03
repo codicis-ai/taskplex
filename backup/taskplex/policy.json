@@ -28,16 +28,16 @@
     "prdFeatureAttemptsAutonomous": 2
   },
   "executionModes": {
-    "standard": {
+    "light": {
       "maxFiles": 20,
       "maxTurns": 25,
-      "agents": ["planning-agent", "closure-agent", "implementation-agent", "build-fixer"],
-      "validationAgents": ["security-reviewer", "closure-agent", "code-reviewer", "hardening-reviewer", "compliance-agent"]
+      "agents": ["implementation-agent", "build-fixer"],
+      "validationAgents": ["closure-agent", "compliance-agent"]
     },
-    "team": {
+    "standard": {
       "maxFiles": null,
       "maxTurns": 25,
-      "agents": ["planning-agent", "closure-agent", "implementation-agent", "build-fixer"],
+      "agents": ["planning-agent", "closure-agent", "implementation-agent", "tactical-critic", "build-fixer"],
       "validationAgents": ["security-reviewer", "closure-agent", "code-reviewer", "hardening-reviewer", "compliance-agent"]
     },
     "blueprint": {
@@ -50,7 +50,8 @@
   },
   "legacyModeMapping": {
     "single": "standard",
-    "parallel": "team",
+    "parallel": "standard",
+    "team": "standard",
     "architect": "blueprint",
     "prd": "blueprint"
   },

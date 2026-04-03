@@ -93,6 +93,62 @@ async function main() {
       }).catch(() => {});
     }
 
+    // === Progress note staleness check ===
+    if (typeof manifest.lastProgressNoteToolCall !== 'number') {
+      manifest.lastProgressNoteToolCall = 0;
+    }
+    // Detect if a new progress note was appended (compare array length)
+    const noteCount = (manifest.progressNotes || []).length;
+    if (!manifest._lastKnownNoteCount) manifest._lastKnownNoteCount = 0;
+    if (noteCount > manifest._lastKnownNoteCount) {
+      // A new progress note was added since last heartbeat
+      manifest.lastProgressNoteToolCall = manifest.toolCallCount;
+      manifest._lastKnownNoteCount = noteCount;
+    } else if (manifest.toolCallCount - manifest.lastProgressNoteToolCall > 15) {
+      // Stale — inject reminder via progress.md warning
+      manifest._progressNoteStale = true;
+    } else {
+      manifest._progressNoteStale = false;
+    }
+
+    // === Phase checklist auto-update ===
+    if (editedFile) {
+      const normalizedForCheck = editedFile.replace(/\\/g, '/');
+      const basename = path.basename(normalizedForCheck);
+      if (!manifest.phaseChecklist) manifest.phaseChecklist = {};
+
+      if (basename === 'brief.md') {
+        manifest.phaseChecklist.briefWriting = 'completed';
+      }
+      if (basename === 'spec.md') {
+        manifest.phaseChecklist.planning = 'completed';
+        if (!manifest.phaseChecklist.implementation || manifest.phaseChecklist.implementation === 'pending') {
+          manifest.phaseChecklist.implementation = 'in-progress';
+        }
+      }
+      if (basename === 'qa-report.md') {
+        manifest.phaseChecklist.qa = 'completed';
+        if (!manifest.phaseChecklist.validation || manifest.phaseChecklist.validation === 'pending') {
+          manifest.phaseChecklist.validation = 'in-progress';
+        }
+      }
+    }
+
+    // === Wave progress tracking ===
+    if (editedFile && manifest.waveProgress) {
+      const normalizedWaveFile = editedFile.replace(/\\/g, '/');
+      for (const waveId of Object.keys(manifest.waveProgress)) {
+        const wave = manifest.waveProgress[waveId];
+        if (wave && wave.status === 'in-progress') {
+          if (!wave.filesModified) wave.filesModified = [];
+          if (!wave.filesModified.includes(normalizedWaveFile)) {
+            wave.filesModified.push(normalizedWaveFile);
+          }
+          break; // Only track against the current in-progress wave
+        }
+      }
+    }
+
     // === Update timestamp ===
     manifest.lastUpdated = new Date().toISOString();
 
@@ -157,6 +213,24 @@ function renderProgress(taskPath, manifest) {
 
     if (manifest.modifiedFiles && manifest.modifiedFiles.length > 0) {
       lines.push(`**Files modified:** ${manifest.modifiedFiles.length}`);
+    }
+
+    // Wave progress summary
+    if (manifest.waveProgress) {
+      lines.push('');
+      lines.push('## Wave Progress');
+      for (const [waveId, wave] of Object.entries(manifest.waveProgress)) {
+        const fileCount = (wave.filesModified || []).length;
+        const validationStr = wave.validation ? ` | Validation: ${JSON.stringify(wave.validation)}` : '';
+        lines.push(`- **${waveId}** (${wave.name || waveId}): ${wave.status || 'pending'} — ${fileCount} files${validationStr}`);
+      }
+    }
+
+    // Progress note staleness warning
+    if (manifest._progressNoteStale) {
+      lines.push('');
+      lines.push('### Progress Note Reminder');
+      lines.push('⚠️ No progress note in 15+ tool calls. Update manifest.progressNotes with current status.');
     }
 
     fs.writeFileSync(path.join(taskPath, 'progress.md'), lines.join('\n'));
