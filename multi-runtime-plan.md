@@ -42,15 +42,17 @@ taskplex-core/
 │   ├── hardening-checks.md  # Hardening check registry
 │   └── skill-evolution.md   # Skill evolution spec
 ├── agents/
-│   ├── architect.md         # Opus-level design
-│   ├── planning-agent.md    # Spec writing
-│   ├── implementation-agent.md
+│   ├── architect.md              # Opus design (structured summary return)
+│   ├── planning-agent.md         # Spec writing (structured summary)
+│   ├── implementation-agent.md   # Code impl (mandatory self-verification)
+│   ├── verification-agent.md     # Adversarial tester (test-plan + verify modes)
+│   ├── review-standards.md       # Shared anti-rationalization rules
 │   ├── security-reviewer.md
 │   ├── closure-agent.md
 │   ├── code-reviewer.md
 │   ├── hardening-reviewer.md
 │   ├── database-reviewer.md
-│   ├── e2e-reviewer.md
+│   ├── e2e-reviewer.md           # Playwright MCP preferred, agent-browser fallback
 │   ├── user-workflow-reviewer.md
 │   ├── compliance-agent.md
 │   ├── researcher.md
@@ -68,6 +70,32 @@ taskplex-core/
 ```
 
 All internal references use `$TASKPLEX_HOME/` paths. Each runtime package resolves this to its native path.
+
+### Core Features Each Runtime Must Support
+
+Every runtime package must implement or gracefully degrade these features:
+
+| Feature | Description | Enforcement |
+|---------|-------------|-------------|
+| **3 Routes** | Light / Standard (default, multi-agent) / Blueprint (architect + waves) | Skill instructions |
+| **Adaptive interaction** | Context density-driven questioning, flag-based gates | Skill instructions |
+| **Three-contract chain** | Intent traceability (AC→architecture) → test plan (verification pre-commit) → verification execution | Skill + agent definitions |
+| **Design gate** | Block source writes before design complete | Hook (hard) |
+| **Implementation gate** | Block orchestrator inline coding in Standard/Blueprint | Hook (hard) |
+| **Pre-commit gate** | Block git commits without validation | Hook (hard) |
+| **Verification agent** | Adversarial testing — two modes (test-plan, verify). Anti-rationalization. | Agent definition |
+| **Review standards** | Shared anti-rationalization rules across all reviewers | Agent reference file |
+| **Narrative progress** | Task narrative in progress.md, injected on session resume | Hook (heartbeat + session-start) |
+| **Presentation detail levels** | Structured summaries (~20-30 lines), not full artifacts or terse one-liners | Skill instructions |
+| **Verification commands in handoffs** | Build commands included in every agent handoff | Skill instructions |
+| **Memplex integration** | Pre-spawn context assembly, knowledge persistence. Graceful when unavailable. | MCP (most runtimes) or HTTP bridge (Pi) |
+| **Playwright MCP** | Browser verification for e2e-reviewer and QA phase. `@playwright/mcp@latest` | MCP config |
+| **Skill evolution** | Signal detection → evolutions.json → /solidify | Completion phase + command |
+| **Drift detection** | /drift command + drift-scanner agent | Command + agent |
+| **Task list lifecycle** | Create at init → refine after plan → update during execution → recreate on resume | Runtime-specific (TaskCreate in Claude Code, equivalent elsewhere) |
+| **Mid-task changes** | User can redirect anytime, state stays current | Skill instructions |
+| **Frontend parity** | API endpoints must have UI consumers when frontend detected | Skill instructions |
+| **Journey verification** | Trace ACs to code, detect orphaned endpoints | Validation phase |
 
 ### Per-Runtime Native Packages
 
