@@ -11,13 +11,14 @@ Distribute TaskPlex as **native packages for each runtime** — not a generic sk
 | Runtime | Package Type | Skills | Hooks | Subagents | MCP | Marketplace | Priority |
 |---------|-------------|:---:|:---:|:---:|:---:|:---:|---|
 | **Claude Code** | Manual (hooks + commands) | Yes | 9 events | Agent tool | Yes | No | Already built |
-| **Cursor 3** | Marketplace plugin | Yes | Via plugins | Async, nested | Yes | Yes (30+ plugins) | **High** |
-| **Codex CLI** | Plugin + marketplace | Yes | 5 events | Multi-agent v2 | Yes | Yes | **High** |
-| **Gemini CLI** | Extension package | Yes | BeforeTool+ask | Multi-registry | Yes | Extensions | **High** |
-| **OpenCode** | TypeScript plugin (npm) | Yes | 25+ events | Custom agents | Yes | npm | Medium |
-| **Windsurf** | Manual (hooks.json + rules) | Yes | 12 events | No | Yes | No | Medium |
-| **Antigravity** | MCP + skills | Yes | Unknown | Yes (Jetski) | Yes | MCP hub | Low |
-| **Aider** | CONVENTIONS.md only | Partial | No | No | No | No | Low |
+| **Cursor 3** | Marketplace plugin | Yes | Via plugins | Async, nested | Yes | Yes (30+ plugins) | **1 — High** |
+| **Pi** | Pi package (npm/git) | Yes | 25+ events (extension API) | Extension-based | **No** | npm/git | **2 — High** |
+| **Gemini CLI** | Extension package | Yes | BeforeTool+ask | Multi-registry | Yes | Extensions | **3 — High** |
+| **Codex CLI** | Plugin + marketplace | Yes | 5 events | Multi-agent v2 | Yes | Yes | **4 — Medium** |
+| **OpenCode** | TypeScript plugin (npm) | Yes | 25+ events | Custom agents | Yes | npm | **5 — Medium** |
+| **Windsurf** | Manual (hooks.json + rules) | Yes | 12 events | No | Yes | No | **6 — Low** |
+| **Antigravity** | MCP + skills | Yes | Unknown | Yes (Jetski) | Yes | MCP hub | **7 — Low** |
+| **Aider** | CONVENTIONS.md only | Partial | No | No | No | No | **8 — Low** |
 
 ## Architecture
 
@@ -143,6 +144,39 @@ taskplex-windsurf/           # Windsurf (manual install)
 **Key advantage**: Cursor's `/worktree` replaces our manual git worktree management. Subagents are async by default — they don't block the orchestrator. This naturally enforces the execution continuity rule.
 
 **Distribution**: Cursor marketplace plugin → one-click install.
+
+### Pi (priority 2)
+
+**Why second**: Best extension architecture of any runtime. Real programmatic enforcement (not exit-code-based). Custom TUI. In-process state. Existing 43KB design spec (`taskplex-pi-plugin.md`).
+
+**Mapping**:
+| TaskPlex Concept | Pi Primitive |
+|-----------------|-------------|
+| `/tp` command | `pi.registerCommand("tp", ...)` |
+| Design gate | `pi.on("tool_call")` → `{ block: true, reason: "..." }` |
+| Pre-commit | `pi.on("tool_call")` on bash → detect `git commit` |
+| Implementation gate | `pi.on("tool_call")` on write/edit → check manifest |
+| Heartbeat | `pi.on("tool_result")` for write/edit |
+| Session recovery | `pi.on("session_start")` + `pi.appendEntry()` state |
+| Pre-compact | `pi.on("session_before_compact")` with custom summary |
+| Agent spawning | Subagent extension (spawn `pi` processes, single/parallel/chain) |
+| User interaction | `ctx.ui.select()`, `ctx.ui.confirm()`, `ctx.ui.input()` |
+| Progress display | `ctx.ui.setWidget()` — persistent TUI widget |
+| Phase context | `pi.on("before_agent_start")` — inject into system prompt |
+| Manifest | In-memory (`pi.appendEntry()`) + disk (`.claude-task/manifest.json`) hybrid |
+| Quality profiles | `pi.registerFlag("--profile", ...)` |
+| Memplex | **Extension bridge** (see MCP/Memplex Strategy below) |
+| Playwright | Pi's `browser-tools` skill OR extension bridge to `@playwright/mcp` |
+
+**Key advantages**:
+- `tool_call` blocking is real TypeScript code — strongest enforcement of any runtime
+- `pi.appendEntry()` gives structured state that survives compaction without file I/O
+- Custom TUI widgets can show phase checklist permanently, not just in chat
+- Package distribution: `pi install npm:taskplex`
+
+**Key gap**: No native MCP. Memplex requires an extension bridge (see below).
+
+**Distribution**: `pi install npm:taskplex-pi` or `pi install git:github.com/taskplex/taskplex-pi`.
 
 ### Codex CLI
 
@@ -286,14 +320,22 @@ The 3 critical hooks (design gate, pre-commit, implementation gate) map to each 
 - Test end-to-end: `/tp` → design → planning → implementation → validation
 - Submit to Cursor marketplace
 
-### Phase 3: Codex CLI Plugin (2-3 days)
+### Phase 3: Pi Package (3-5 days)
+- TypeScript extension with full gate enforcement
+- Subagent extension for Standard/Blueprint routes
+- Custom TUI widgets for progress display
+- Memplex bridge extension (see MCP/Memplex Strategy)
+- `pi.appendEntry()` for session state
+- npm publish + test end-to-end
+
+### Phase 4: Codex CLI Plugin (2-3 days)
 - Create plugin with agents/openai.yaml metadata
 - Map hooks (5 events — workaround for PreToolUse Bash-only)
 - Map agents to Multi-Agent v2
 - Configure MCP servers
 - Publish to Codex plugin marketplace
 
-### Phase 4: Gemini CLI Extension (2-3 days)
+### Phase 5: Gemini CLI Extension (2-3 days)
 - Create extension with gemini-extension.json manifest
 - TOML command files for /taskplex, /plan, /drift, /solidify
 - BeforeTool hooks with `ask` for design gate
@@ -301,14 +343,14 @@ The 3 critical hooks (design gate, pre-commit, implementation gate) map to each 
 - Policy files for quality profiles
 - Test and publish
 
-### Phase 5: OpenCode Plugin (3-5 days)
+### Phase 6: OpenCode Plugin (3-5 days)
 - TypeScript plugin with @opencode-ai/plugin SDK
 - Full state machine implementation (25+ hooks)
 - Custom tools for manifest management
 - In-process + disk hybrid state
 - npm publish
 
-### Phase 6: Windsurf + Antigravity (1-2 days each)
+### Phase 7: Windsurf + Antigravity (1-2 days each)
 - Windsurf: hooks.json + rules + install script
 - Antigravity: MCP + skills (minimal, leverages existing MCP support)
 
@@ -336,6 +378,155 @@ Each runtime package bundles these skills alongside the core workflow.
 | Playwright MCP | Free | — |
 
 TaskPlex is free. Memplex is the upsell. The cross-runtime distribution expands the memplex addressable market — every TaskPlex user on any runtime sees the "cross-session persistence requires memplex" note.
+
+## MCP and Memplex Strategy (Cross-Runtime)
+
+### The Problem
+
+Memplex is an MCP server. Most runtimes support MCP natively — it just works. But **Pi deliberately excludes MCP**. And memplex is the paid product that TaskPlex upsells. If Pi can't use memplex, that's a significant revenue gap for a high-priority runtime.
+
+### Three-Layer Knowledge Architecture
+
+Instead of making memplex MCP-only, abstract the knowledge interface so it works through multiple transports:
+
+```
+Layer 1: Knowledge Interface (runtime-agnostic)
+  search_knowledge(query) → results
+  file_intelligence(path) → coupling, issues
+  get_error_resolution(error) → fix
+  write_knowledge(entry) → saved
+  
+Layer 2: Transport Adapters
+  ├── MCP Adapter (Claude Code, Cursor, Codex, Gemini, OpenCode, Windsurf)
+  │   → Calls mcp__mp__search_knowledge etc.
+  │
+  ├── HTTP Adapter (any runtime)
+  │   → Calls memplex daemon REST API (localhost:port)
+  │
+  └── CLI Adapter (Pi, Aider, or any runtime without MCP)
+      → Calls `memplex-cli search --query "..."` subprocess
+      → Or imports memplex-db directly as a library
+
+Layer 3: Runtime Integration
+  Each TaskPlex runtime package uses the appropriate adapter
+```
+
+### How This Works Per Runtime
+
+| Runtime | MCP Available? | Memplex Transport | Integration |
+|---------|:---:|---|---|
+| Claude Code | Yes | MCP (native) | Already built — `mcp__mp__*` tools |
+| Cursor | Yes | MCP (native) | Same as Claude Code, bundled in plugin |
+| Codex | Yes | MCP (native) | Same, bundled in plugin |
+| Gemini CLI | Yes | MCP (native) | Same, bundled in extension |
+| OpenCode | Yes | MCP (native) | Same, bundled in plugin |
+| Windsurf | Yes | MCP (native) | Same, configured in hooks.json |
+| **Pi** | **No** | **HTTP or CLI** | Extension bridge (see below) |
+| Antigravity | Yes | MCP (native) | Config in mcp_config.json |
+| Aider | No | CLI | CONVENTIONS.md injection from CLI output |
+
+### Pi Memplex Bridge
+
+For Pi, build a **memplex bridge extension** that wraps the knowledge interface as Pi tools:
+
+```typescript
+// extensions/memplex-bridge/index.ts
+
+export default function(pi: ExtensionAPI) {
+  const MEMPLEX_URL = process.env.MEMPLEX_URL || 'http://localhost:8377';
+  
+  pi.registerTool({
+    name: "search_knowledge",
+    description: "Search project memory for past decisions, patterns, and error resolutions",
+    parameters: Type.Object({ query: Type.String(), project: Type.Optional(Type.String()) }),
+    async execute(id, params, signal) {
+      const res = await fetch(`${MEMPLEX_URL}/api/search`, {
+        method: 'POST',
+        body: JSON.stringify(params)
+      });
+      const data = await res.json();
+      return { content: [{ type: "text", text: JSON.stringify(data) }] };
+    }
+  });
+  
+  pi.registerTool({
+    name: "file_intelligence",
+    description: "Get coupling, known issues, and change patterns for a file",
+    parameters: Type.Object({ path: Type.String() }),
+    async execute(id, params, signal) {
+      const res = await fetch(`${MEMPLEX_URL}/api/file-intelligence`, {
+        method: 'POST',
+        body: JSON.stringify(params)
+      });
+      const data = await res.json();
+      return { content: [{ type: "text", text: JSON.stringify(data) }] };
+    }
+  });
+  
+  // ... same for get_error_resolution, write_knowledge, etc.
+}
+```
+
+**Requirements**: Memplex daemon must be running and exposing an HTTP API. The daemon already exists (`memplex-daemon` in the memplex project) — it just needs a REST endpoint layer alongside the existing MCP stdio transport.
+
+### Memplex Daemon HTTP API (needed for Pi bridge)
+
+The memplex daemon currently communicates via MCP (stdio JSON-RPC). Adding an HTTP transport is straightforward:
+
+```
+POST /api/search          → search_knowledge
+POST /api/file-intel      → file_intelligence  
+POST /api/error-resolve   → get_error_resolution
+POST /api/write           → write_knowledge
+POST /api/coupling        → get_file_coupling
+GET  /api/health          → daemon status
+```
+
+This HTTP API also benefits:
+- **Aider** — can curl the API from shell commands
+- **Any future runtime** without MCP — HTTP is universal
+- **Web UIs** — dashboards, viz apps can call the API directly
+- **CI/CD** — build pipelines can query knowledge
+
+### CLI Fallback (for environments without HTTP)
+
+If the daemon isn't running, the bridge falls back to CLI:
+```bash
+memplex-cli search --query "auth patterns" --project "my-app" --json
+```
+
+This works anywhere Node.js or the memplex binary is installed. Slower (process spawn per call) but functional.
+
+### Impact on Memplex Product
+
+Adding HTTP transport to the memplex daemon is a **high-value change** for the whole ecosystem:
+
+| Benefit | Who |
+|---------|-----|
+| Pi users get memplex | TaskPlex-Pi users (paid memplex customers) |
+| Aider users get memplex | Expanded addressable market |
+| Web dashboards get API | Agent-world-viz, mission control |
+| CI/CD gets knowledge | Build pipelines can check for known errors |
+| Any new runtime gets memplex | Future-proofed — HTTP is universal |
+
+This is a memplex engineering task, not a TaskPlex task. But it unlocks Pi (and all non-MCP runtimes) for paid memplex integration.
+
+### Playwright Strategy for Pi
+
+Pi has no MCP, so `@playwright/mcp` doesn't work. Options:
+
+1. **Pi's browser-tools skill** (from pi-skills repo) — uses Playwright CLI directly, no MCP. Already works. Less structured than MCP tools but functional.
+
+2. **HTTP transport for Playwright MCP** — start `@playwright/mcp --port 3000`, call via HTTP from a Pi extension. Same bridge pattern as memplex.
+
+3. **Direct Playwright import** — Pi extensions run in Node.js. Import `playwright` directly:
+   ```typescript
+   import { chromium } from 'playwright';
+   const browser = await chromium.launch({ headless: true });
+   ```
+   Most powerful but heaviest — the extension manages the browser lifecycle.
+
+**Recommendation**: Start with option 1 (browser-tools skill — already exists), upgrade to option 2 (HTTP bridge) if more structured control is needed.
 
 ## Open Questions
 
