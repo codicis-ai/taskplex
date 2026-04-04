@@ -622,6 +622,16 @@
       "default": 0,
       "description": "toolCallCount at the time of last progressNote append. Used by heartbeat to detect staleness."
     },
+    "driftBaseline": {
+      "type": ["object", "null"],
+      "default": null,
+      "description": "Drift index at task start. Used to detect if task introduced drift. Set by /drift or at task init if recent report exists.",
+      "properties": {
+        "index": { "type": "number", "description": "Drift index score (0-100)" },
+        "scannedAt": { "type": "string", "format": "date-time" },
+        "highFindings": { "type": "integer", "description": "Number of high-severity findings" }
+      }
+    },
     "failures": { "type": "array" },
     "sessionFile": { "type": ["string", "null"] },
     "createdAt": { "type": "string", "format": "date-time" },

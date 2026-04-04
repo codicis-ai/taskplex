@@ -118,6 +118,27 @@ The user trusted the plan when they approved it. Implementation executes that pl
 
 ---
 
+## Verification Commands Assembly (before every implementation agent spawn)
+
+**MANDATORY**: Every implementation agent handoff MUST include a `verification` block with the exact commands to run for self-verification. The orchestrator copies these from `manifest.buildCommands`.
+
+```markdown
+## Verification (MANDATORY — run before reporting completion)
+
+Commands:
+- Typecheck: {manifest.buildCommands.typecheck}
+- Lint: {manifest.buildCommands.lint}
+- Test: {manifest.buildCommands.test}
+{If manifest.buildCommands.custom:}
+- {name}: {command}
+
+Run ALL commands. Fix failures. Do NOT report STATUS: completed if any command fails.
+```
+
+If `manifest.buildCommands` is not yet resolved (still in init phase): use project defaults based on detected type (package.json → npm, Cargo.toml → cargo, etc.).
+
+---
+
 ## Frontend Parity Rule (MANDATORY for architect prompts)
 
 Before spawning the architect (or planning agent), check `manifest.frontendParity.required`. If true:

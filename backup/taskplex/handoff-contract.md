@@ -79,9 +79,18 @@ Written by the orchestrator when spawning a worker:
     "description": "Implement Section 3: Authentication",
     "acceptanceCriteria": ["AC-3.1: JWT login", "AC-3.2: Token refresh", "AC-3.3: Auth middleware"],
     "evidenceRequired": "Build passes, acceptance criteria met"
+  },
+  "verification": {
+    "typecheck": "npx tsc --noEmit",
+    "lint": "npx eslint src/ --max-warnings 0",
+    "test": "npx vitest run --reporter=verbose",
+    "custom": [],
+    "instruction": "Run ALL verification commands after implementation. Fix any failures before reporting completion. Do not suppress warnings."
   }
 }
 ```
+
+**Verification block**: The orchestrator MUST populate `verification` from `manifest.buildCommands`. These are the exact commands the worker runs to self-verify before reporting completion. Workers must not report `STATUS: completed` if any verification command fails.
 
 ### 2. Worker → Orchestrator (completion or escalation)
 

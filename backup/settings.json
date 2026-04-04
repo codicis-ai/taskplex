@@ -216,6 +216,13 @@
       "args": [
         "mcp"
       ]
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["@anthropic-ai/mcp-playwright"],
+      "env": {
+        "PLAYWRIGHT_HEADLESS": "true"
+      }
     }
   }
 }

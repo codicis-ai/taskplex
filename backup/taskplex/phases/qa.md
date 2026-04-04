@@ -64,12 +64,19 @@ Before walking journeys, verify the basic thing works at all. This catches "it d
 ### By product type:
 
 **UI App (web):**
-```bash
-# Start the dev server if not running
-# (use manifest.buildCommands or detected defaults)
+
+Detect browser tool: prefer Playwright MCP (`mcp__playwright__*`), fallback to `agent-browser` CLI, skip if neither available.
+
+```
+# With Playwright MCP (preferred):
+mcp__playwright__browser_navigate → {url}
+mcp__playwright__browser_screenshot → .claude-task/{taskId}/screenshots/smoke-test.png
+mcp__playwright__browser_console → check for errors
+
+# With agent-browser (fallback):
 agent-browser open {url}
-agent-browser snapshot          # Does anything render?
-agent-browser console           # Runtime errors?
+agent-browser snapshot
+agent-browser console
 ```
 - Pass: Main view renders, no critical console errors
 - Fail: Blank screen, crash, or error page
@@ -133,14 +140,23 @@ Infer core journeys from the task description and modified files:
 ### Journey execution by product type:
 
 **UI App:**
-```bash
-agent-browser open {url}
-# For each step in the journey:
-agent-browser snapshot                    # What's on screen?
-agent-browser click @{element}            # Take the action
-agent-browser snapshot                    # Did the right thing happen?
-agent-browser console                     # Any errors triggered?
+
+Use Playwright MCP (preferred) or agent-browser (fallback):
 ```
+# With Playwright MCP:
+mcp__playwright__browser_navigate → {url}
+# For each step in the journey:
+mcp__playwright__browser_screenshot → capture before state
+mcp__playwright__browser_click → take the action
+mcp__playwright__browser_screenshot → capture after state
+mcp__playwright__browser_console → check for errors
+
+# With agent-browser (fallback):
+agent-browser open {url}
+agent-browser snapshot / agent-browser click @{element} / agent-browser console
+```
+
+Store screenshots at `.claude-task/{taskId}/screenshots/journey-{name}-step{N}.png`
 
 **CLI:**
 ```bash

@@ -1,7 +1,7 @@
 ---
 name: evaluate
 description: Evaluate existing products and validate implementations. Audit apps, CLIs, APIs, and libraries for quality, usability, and developer experience. Review implementations against product briefs. Use this skill when the user asks to evaluate something that already exists — "is this any good?", "audit this", "review the UX", "check the developer experience", "does this CLI work well?", "evaluate my API", "how's the quality?", "DX audit", "did we deliver what the brief promised?", "validate against the brief". Also triggers on "review implementation", "product review", "UX review", "is this ready?". If the user wants a product brief or wants to plan what to build, use /plan instead — briefs live there now.
-allowed-tools: Bash(agent-browser:*), Bash(npx agent-browser:*)
+allowed-tools: mcp__playwright__*, Bash(agent-browser:*), Bash(npx agent-browser:*)
 ---
 
 # /evaluate — Evaluate What Exists

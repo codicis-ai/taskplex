@@ -81,6 +81,17 @@ async function main() {
         }
 
         if (transitionAllowed) {
+          // Log phase transition with narrative
+          if (!manifest._phaseTransitions) manifest._phaseTransitions = [];
+          const fileCount = (manifest.modifiedFiles || []).length;
+          const summary = `${fileCount} files modified. Moving to ${derivedPhase}.`;
+          manifest._phaseTransitions.push({
+            from: manifest.phase,
+            to: derivedPhase,
+            at: new Date().toISOString(),
+            toolCall: manifest.toolCallCount,
+            summary
+          });
           manifest.phase = derivedPhase;
         }
       }
@@ -171,10 +182,9 @@ async function main() {
 }
 
 function renderProgress(taskPath, manifest) {
-  const notes = manifest.progressNotes;
-  if (!notes || notes.length === 0) return;
-
   try {
+    const notes = manifest.progressNotes || [];
+
     const lines = [
       `# Progress: ${manifest.description || manifest.taskId}`,
       `**Phase:** ${manifest.phase} | **Status:** ${manifest.status}`,
@@ -182,10 +192,98 @@ function renderProgress(taskPath, manifest) {
       '',
     ];
 
-    const done = notes.filter(n => n.status === 'done');
+    // === Narrative Summary (for cold starts / session resume) ===
+    lines.push('## Task Narrative');
+    lines.push('');
+    lines.push(`**Task**: ${manifest.description || manifest.taskId}`);
+
+    // Approach — from brief.md if it exists
+    const briefPath = path.join(taskPath, 'brief.md');
+    if (fs.existsSync(briefPath)) {
+      try {
+        const brief = fs.readFileSync(briefPath, 'utf8');
+        const approachMatch = brief.match(/##\s*(?:Chosen\s+)?Approach[^\n]*\n([\s\S]*?)(?=\n## |\n---|\n$)/i);
+        if (approachMatch) {
+          const approachLine = approachMatch[1].trim().split('\n')[0];
+          if (approachLine.length > 0 && approachLine.length < 200) {
+            lines.push(`**Approach**: ${approachLine}`);
+          }
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    // Current focus — from active progress notes
     const active = notes.filter(n => n.status === 'active');
-    const pending = notes.filter(n => n.status === 'pending');
+    if (active.length > 0) {
+      lines.push(`**Current focus**: ${active.map(n => n.text).join('; ')}`);
+    }
+
+    // Key decisions — from confirmed conventions + overrides
+    const decisions = [];
+    if (manifest.conventionContext?.confirmed?.length > 0) {
+      decisions.push(...manifest.conventionContext.confirmed.slice(0, 3));
+    }
+    if (manifest.overrides?.length > 0) {
+      decisions.push(...manifest.overrides.map(o => `Override: ${o.reason}`).slice(0, 2));
+    }
+    if (decisions.length > 0) {
+      lines.push(`**Key decisions**: ${decisions.join('; ')}`);
+    }
+
+    // Blockers — from issues + escalations
     const issues = notes.filter(n => n.status === 'issue');
+    const escalations = manifest.escalations || [];
+    const blockers = [
+      ...issues.map(n => n.text),
+      ...escalations.map(e => `${e.type}: ${e.source}`),
+    ];
+    if (blockers.length > 0) {
+      lines.push(`**Blockers**: ${blockers.join('; ')}`);
+    }
+
+    // Next — from pending progress notes
+    const pending = notes.filter(n => n.status === 'pending');
+    if (pending.length > 0) {
+      lines.push(`**Next**: ${pending.slice(0, 3).map(n => n.text).join('; ')}`);
+    }
+
+    // Files summary
+    const fileCount = (manifest.modifiedFiles || []).length;
+    if (fileCount > 0) {
+      lines.push(`**Files modified**: ${fileCount}`);
+    }
+
+    lines.push('');
+
+    // === Phase transition log ===
+    if (manifest._phaseTransitions?.length > 0) {
+      lines.push('## Phase Transitions');
+      for (const t of manifest._phaseTransitions.slice(-5)) {
+        lines.push(`- **${t.from} → ${t.to}**: ${t.summary}`);
+      }
+      lines.push('');
+    }
+
+    // === Detailed Progress ===
+    const done = notes.filter(n => n.status === 'done');
+
+    if (done.length > 0) {
+      lines.push('## Completed');
+      for (const n of done) lines.push(`- [x] ${n.text}`);
+      lines.push('');
+    }
+
+    if (active.length > 0) {
+      lines.push('## In Progress');
+      for (const n of active) lines.push(`- [ ] **${n.text}**`);
+      lines.push('');
+    }
+
+    if (pending.length > 0) {
+      lines.push('## Pending');
+      for (const n of pending) lines.push(`- [ ] ${n.text}`);
+      lines.push('');
+    }
 
     if (done.length > 0) {
       lines.push('## Completed');

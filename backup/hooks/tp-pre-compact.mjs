@@ -59,7 +59,20 @@ async function main() {
       validation: manifest.validation || {},
       iterationCounts: manifest.iterationCounts || {},
       degradations: manifest.degradations || [],
+      phaseTransitions: manifest._phaseTransitions || [],
     };
+
+    // Include narrative summary from progress.md
+    const progressPath = path.join(taskPath, 'progress.md');
+    if (fs.existsSync(progressPath)) {
+      try {
+        const progressContent = fs.readFileSync(progressPath, 'utf8');
+        const narrativeMatch = progressContent.match(/## Task Narrative\n([\s\S]*?)(?=\n## (?!Task Narrative)|\n---|\n$)/);
+        if (narrativeMatch) {
+          checkpoint.narrativeSummary = narrativeMatch[1].trim();
+        }
+      } catch { /* non-fatal */ }
+    }
 
     // Include active workers if any
     const workersDir = path.join(taskPath, 'workers');

@@ -42,13 +42,19 @@ You receive a prompt pointing you to files on disk. Read these yourself — the 
 1. Read all provided context
 2. Identify files to create/modify from the spec
 3. Implement changes file by file
-4. Run build validation:
+4. **Self-verification (MANDATORY)** — run every command in your handoff's `verification` block:
+   a. Run typecheck command — fix all errors
+   b. Run lint command — fix all warnings (no suppressions, no eslint-disable)
+   c. Run test command — fix all failures
+   d. Run any custom commands
+   If no `verification` block was provided, use project defaults:
    - TypeScript: `npm run typecheck && npm run lint`
    - Rust: `cargo check && cargo clippy`
    - Python: `ruff check . && mypy .`
    - Go: `go build ./... && go vet ./...`
-5. If build fails: fix issues (max 3 build-fix rounds, then return with status: blocked)
-6. Write deferred items to `.claude-task/{taskId}/deferred/agent-{timestamp}.md` if any found
+5. If verification fails: fix issues (max 3 rounds, then return with status: blocked)
+6. **Do NOT report `STATUS: completed` if any verification command fails.**
+7. Write deferred items to `.claude-task/{taskId}/deferred/agent-{timestamp}.md` if any found
 
 ## Output Contract
 

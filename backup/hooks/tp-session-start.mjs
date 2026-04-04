@@ -120,6 +120,21 @@ async function main() {
 
     const progressNotes = resumeCtx?.progress_notes || manifest.progressNotes || [];
 
+    // === Task Narrative (read from progress.md — gives instant context on resume) ===
+    const progressPath = path.join(taskPath, 'progress.md');
+    if (fs.existsSync(progressPath)) {
+      try {
+        const progressContent = fs.readFileSync(progressPath, 'utf8');
+        const narrativeMatch = progressContent.match(/## Task Narrative\n([\s\S]*?)(?=\n## (?!Task Narrative)|\n---|\n$)/);
+        if (narrativeMatch) {
+          lines.push('');
+          lines.push('═══ TASK NARRATIVE ═══');
+          lines.push(narrativeMatch[1].trim());
+          lines.push('═════════════════════');
+        }
+      } catch { /* non-fatal */ }
+    }
+
     // === Phase Checklist ===
     const checklist = manifest.phaseChecklist;
     if (checklist && typeof checklist === 'object') {
@@ -232,6 +247,30 @@ async function main() {
     if (artifacts.length > 0) {
       const taskDir = path.relative(cwd, taskPath).replace(/\\/g, '/');
       lines.push(`Key artifacts: ${artifacts.map(a => `${taskDir}/${a}`).join(', ')}`);
+    }
+
+    // === Drift report advisory ===
+    const projectRoot = findProjectRoot(cwd) || cwd;
+    const taskDir2 = path.join(projectRoot, '.claude-task');
+    if (fs.existsSync(taskDir2)) {
+      try {
+        const driftFiles = fs.readdirSync(taskDir2)
+          .filter(f => f.startsWith('drift-report-') && f.endsWith('.md'))
+          .sort().reverse();
+        if (driftFiles.length > 0) {
+          const latestDate = driftFiles[0].match(/drift-report-(\d{4}-\d{2}-\d{2})/);
+          if (latestDate) {
+            const daysSince = Math.floor((Date.now() - new Date(latestDate[1]).getTime()) / (86400000));
+            if (daysSince > 7) {
+              lines.push('');
+              lines.push(`Drift: Last scan was ${daysSince} days ago. Consider running /drift.`);
+            }
+          }
+        } else {
+          lines.push('');
+          lines.push('Drift: No drift scan on record. Consider running /drift for codebase health check.');
+        }
+      } catch { /* non-fatal */ }
     }
 
     continueWithContext(lines.join('\n'));
