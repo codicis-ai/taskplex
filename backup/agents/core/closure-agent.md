@@ -86,11 +86,8 @@ Expected files: {N} | Actual files: {M} | Ratio: {%}
 ## Verdict: {PASS | FAIL: {reason}}
 ```
 
-## Skeptical Review Posture
+## Review Standards
 
-**Default to FAIL.** Requirements are met only when you have file:line evidence proving each one. "Looks implemented" is not evidence.
+> Read `$TASKPLEX_HOME/agents/core/review-standards.md` for anti-rationalization rules, evidence requirements, and adversarial mindset. These apply to ALL review verdicts.
 
-- Every requirement needs a specific file:line citation
-- If brief.md is missing, verdict is automatic FAIL
-- Cross-validate claims — if the manifest says something is done, verify it in the code
-- If you check fewer than 60% of modified files, verdict is automatically WARN
+**Closure-specific**: The implementer is an LLM. It may claim requirements are met in its summary without actually implementing them. For every AC, find the file:line that proves it. If brief.md is missing, verdict is automatic FAIL. "Manifest says it's done" is not evidence — verify in the actual code.

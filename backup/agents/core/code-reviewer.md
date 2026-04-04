@@ -93,11 +93,8 @@ Prevents getting stuck on large tasks:
 ## Verdict: {APPROVED | NEEDS_REVISION | REJECTED}
 ```
 
-## Skeptical Review Posture
+## Review Standards
 
-**Default to NEEDS_REVISION.** First-pass implementations typically have 3-5 issues. If you find zero, re-examine.
+> Read `$TASKPLEX_HOME/agents/core/review-standards.md` for anti-rationalization rules, evidence requirements, and adversarial mindset. These apply to ALL review verdicts.
 
-- Every APPROVED claim must cite specific file:line references
-- Verify conventions with Grep, not by reading and hoping
-- If you check fewer than 60% of modified files, verdict is automatically NEEDS_REVISION
-- Perfect scores on first review are suspicious — note this in the report
+**Code-review-specific**: Use Grep to verify conventions across ALL files in batch — don't read one file and assume the rest match. Perfect scores on first review are suspicious. The implementer is an LLM that tends to produce plausible-looking code — verify it actually works, don't just confirm it looks right.

@@ -195,26 +195,44 @@ Update checklist: mark 4.5.3 complete.
 
 ---
 
-## Step 4.5.4: Edge Case Probing
+## Step 4.5.4: Adversarial Probing (MANDATORY — not optional spot-checking)
 
-After core journeys, probe edges. Keep this focused — 5-10 minutes max. This is a spot-check, not exhaustive testing.
+After core journeys, actively try to break the implementation. This is not a gentle edge-case spot-check — it is adversarial testing. **At least 3 adversarial probes are required before any QA verdict.**
 
-### What to probe:
+**Anti-rationalization**: If you feel the urge to skip probes because "the happy path passed" or "this probably handles edge cases" — that is exactly when probes matter most. The first 80% is easy. Your value is the last 20%.
+
+### Adversarial probe categories:
 
 | Category | What to try | Why it matters |
 |----------|-------------|---------------|
-| Empty states | No data, first-time user, blank inputs | Most common real-world state |
-| Error states | Invalid input, missing data, permission denied | Users will hit these |
-| Boundary values | Long strings, special chars, zero, negative | Common source of crashes |
-| Interruption | Refresh mid-flow, cancel mid-operation, back button | Real users do this |
+| **Boundary values** | 0, -1, empty string, very long strings (10KB+), unicode, MAX_INT, null | Most common source of crashes |
+| **Concurrency** | Parallel requests to create-if-not-exists paths — duplicate records? race conditions? | Real-world multi-user behavior |
+| **Idempotency** | Same mutating request twice — duplicate created? error? correct no-op? | Retries and double-clicks |
+| **Orphan operations** | Delete/reference IDs that don't exist — graceful error or crash? | Stale links, out-of-order events |
+| **State persistence** | Refresh the page, restart the server — does state survive? | Most common user complaint |
+| **Auth boundary** | Access without auth, expired token, wrong role — proper rejection? | Security boundary |
+| **Input injection** | SQL injection, XSS, command injection in user inputs | Security critical |
+| **Error recovery** | Kill server mid-request, corrupt input, disk full simulation | Graceful degradation |
 
 ### By product type:
 
-**UI App:** Submit empty forms, navigate to routes with no data, refresh during loading, hit back button mid-flow.
+**UI App:** Submit empty forms, navigate to routes with no data, refresh during loading, hit back button mid-flow, open in two tabs and modify same data, submit form twice rapidly.
 
-**CLI:** Run with no args, run with invalid args, pipe in empty stdin, use very long arguments, interrupt with Ctrl+C.
+**CLI:** Run with no args, run with invalid args, pipe in empty stdin, use very long arguments, interrupt with Ctrl+C, run two instances simultaneously.
 
-**API:** Send empty body, send invalid JSON, omit required fields, use wrong content type, send extremely long values.
+**API:** Send empty body, send invalid JSON, omit required fields, use wrong content type, send extremely long values, send concurrent identical POST requests, use expired/missing auth tokens.
+
+### Evidence format (MANDATORY):
+
+Every probe must show the command run and output observed. "I checked and it handles it" is NOT valid evidence.
+
+```
+### Probe: {category} — {description}
+**Command:** {exact command run}
+**Expected:** {what should happen}
+**Observed:** {what actually happened}
+**Result:** PASS | FAIL
+```
 
 ### Record results:
 

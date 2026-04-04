@@ -207,9 +207,19 @@ TaskCreate: "Build gate — typecheck + lint"
 
 4. **Build gate**: Run typecheck + lint + tests. Build-fix rounds per policy `limits.buildFixRounds`.
 
-5. **Convention scan**: Read conventions.json or CONVENTIONS.md. Grep modified files for violations. Fix inline. Budget: 3-6 Grep calls.
+5. **Verification** (Standard + Enterprise profiles — skip for Lean):
+   > Spawn verification-agent (sonnet) from $TASKPLEX_HOME/agents/core/verification-agent.md
+     Context: spec.md, brief.md, manifest.modifiedFiles, manifest.buildCommands
+     Writes: .claude-task/{taskId}/reviews/verification.md
+     Returns: "PASS: N checks, P probes, 0 failures" or "FAIL: Q bugs found"
 
-6. **Update documentation** (if needed — same rules as Standard route).
+   The verification agent tries to BREAK the implementation — runs commands, tests endpoints,
+   probes boundaries. It cannot edit files. If bugs found, feed report to implementation agent
+   for one fix round, then re-verify (max 1 cycle).
+
+6. **Convention scan**: Read conventions.json or CONVENTIONS.md. Grep modified files for violations. Fix inline. Budget: 3-6 Grep calls.
+
+7. **Update documentation** (if needed — same rules as Standard route).
 
 **Git notes**: No incremental commits. One commit at completion.
 
