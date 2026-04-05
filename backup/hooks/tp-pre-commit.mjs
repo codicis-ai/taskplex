@@ -2,7 +2,9 @@
 /**
  * TaskPlex Pre-Commit Hook (PreToolUse: Bash)
  *
- * Fires on bash tool use. Blocks git commits if validation has not passed.
+ * Fires on bash tool use. Blocks git commits if:
+ * 1. validation-gate.json not passed (existing check)
+ * 2. Required review artifacts missing for the quality profile (new — artifact-based)
  */
 
 import { pathToFileURL, fileURLToPath } from 'url';
@@ -12,6 +14,9 @@ const {
   parseStdin, normalizeCwd, findSessionTask,
   isValidationPassed, allowTool, denyTool
 } = await import(pathToFileURL(join(__dirname, 'hook-utils.mjs')).href);
+
+import fs from 'fs';
+import path from 'path';
 
 async function main() {
   try {
@@ -56,11 +61,56 @@ async function main() {
         `TaskPlex pre-commit: Commit blocked — validation has not passed.\n` +
         `${missing}\n` +
         `Complete the validation phase before committing.\n` +
-        `Phase file: ~/.claude/taskplex/phases/validation.md\n\n` +
+        `Run the validation pipeline to produce review artifacts.\n\n` +
         `To save task state without triggering this gate, commit only .claude-task/ files:\n` +
         `git add .claude-task/ && git commit -m "chore: TaskPlex state checkpoint"`
       );
       return;
+    }
+
+    // === Review artifact gate (ARTIFACT-BASED — do not trust manifest flags) ===
+    // The agent can write validation-gate.json without actually spawning review agents.
+    // This check verifies the ACTUAL review files exist — they can only be produced by
+    // running the review agents, not by inline grep checks.
+    const reviewsDir = path.join(taskPath, 'reviews');
+    const hardeningDir = path.join(taskPath, 'hardening');
+
+    const requiredByProfile = {
+      lean: [],
+      standard: [
+        { file: 'security.md', dir: reviewsDir, label: 'security review' },
+        { file: 'closure.md', dir: reviewsDir, label: 'closure verification' },
+        { file: 'code-quality.md', dir: reviewsDir, label: 'code review' },
+      ],
+      enterprise: [
+        { file: 'security.md', dir: reviewsDir, label: 'security review' },
+        { file: 'closure.md', dir: reviewsDir, label: 'closure verification' },
+        { file: 'code-quality.md', dir: reviewsDir, label: 'code review' },
+        { file: 'report.md', dir: hardeningDir, label: 'hardening review' },
+        { file: 'compliance.md', dir: reviewsDir, label: 'compliance audit' },
+      ],
+    };
+
+    const required = requiredByProfile[profile] || requiredByProfile.standard;
+    if (required.length > 0) {
+      const missingArtifacts = required.filter(r => {
+        const filePath = path.join(r.dir, r.file);
+        return !fs.existsSync(filePath);
+      });
+
+      if (missingArtifacts.length > 0) {
+        const missingList = missingArtifacts.map(r => `${r.label} (${r.file})`).join(', ');
+        denyTool(
+          `TaskPlex pre-commit: Commit blocked — review artifacts missing.\n` +
+          `Profile: ${profile}. Missing: ${missingList}.\n\n` +
+          `These files are produced by spawning the actual review agents.\n` +
+          `Inline grep checks do NOT produce these artifacts.\n` +
+          `Run the full validation pipeline with agent spawns.\n\n` +
+          `To save task state without triggering this gate, commit only .claude-task/ files:\n` +
+          `git add .claude-task/ && git commit -m "chore: TaskPlex state checkpoint"`
+        );
+        return;
+      }
     }
 
     allowTool();
