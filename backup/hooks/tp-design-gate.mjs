@@ -16,6 +16,7 @@ const {
   allowTool, denyTool, isSourceFile
 } = await import(pathToFileURL(join(__dirname, 'hook-utils.mjs')).href);
 
+import fs from 'fs';
 import path from 'path';
 
 // Sub-phase ordering (higher number = later in flow)
@@ -68,19 +69,72 @@ async function main() {
 
     const phase = manifest.phase || 'init';
 
-    // === Implementation gate: block orchestrator source edits in standard/blueprint ===
-    // In standard/blueprint mode, the orchestrator must delegate to agents, not code directly.
-    // If manifest.implementationDelegated is not true, the orchestrator hasn't spawned agents yet.
+    // === Implementation + QA gates ===
+    // Gate ordering: Acknowledgment → Critic → Implementation delegated → Wave
     if (phase === 'implementation' || phase === 'qa') {
       const execMode = manifest.executionMode || 'standard';
-      // Standard and blueprint both use multi-agent execution (team absorbed into standard)
-      if (execMode === 'standard' || execMode === 'team' || execMode === 'blueprint') {
-        const toolInput = hookInput.tool_input || {};
-        const filePath = toolInput.file_path || toolInput.path || '';
-        const normalizedPath = filePath.replace(/\\/g, '/').toLowerCase();
+      const toolInput = hookInput.tool_input || {};
+      const filePath = toolInput.file_path || toolInput.path || '';
+      const normalizedPath = filePath.replace(/\\/g, '/').toLowerCase();
 
-        // Allow writes to task artifacts (.claude-task/) — only block source code edits
-        if (filePath && !normalizedPath.includes('.claude-task/') && isSourceFile(filePath)) {
+      // Allow writes to task artifacts (.claude-task/) — only block source code edits
+      if (filePath && !normalizedPath.includes('.claude-task/') && isSourceFile(filePath)) {
+
+        // --- Acknowledgment gate (all routes) ---
+        if (!manifest.planSource?.userAcknowledged) {
+          denyTool(
+            `TaskPlex acknowledgment gate: User has not acknowledged the plan.\n` +
+            `Run Pre-Implementation Acknowledgment (Phase A.3) before proceeding.\n` +
+            `Use AskUserQuestion to present the plan summary and get approval.\n` +
+            `Then set manifest.planSource.userAcknowledged = true.\n\n` +
+            `Escape: manually set planSource.userAcknowledged to true in manifest.json.`
+          );
+          return;
+        }
+
+        // --- Critic gate (standard/team/blueprint only, light exempt) ---
+        if (execMode === 'standard' || execMode === 'team' || execMode === 'blueprint') {
+          let criticDone = manifest.criticCompleted === true;
+
+          // Artifact-based fallback: detect review files if flag not set
+          if (!criticDone) {
+            try {
+              const reviewsDir = path.join(taskPath, 'reviews');
+              if (fs.existsSync(reviewsDir)) {
+                const reviewFiles = fs.readdirSync(reviewsDir);
+                if (execMode === 'blueprint') {
+                  criticDone = reviewFiles.some(f => f.startsWith('strategic-review') || f.startsWith('tactical-review'));
+                } else {
+                  criticDone = reviewFiles.some(f => f.startsWith('spec-review') || f.startsWith('spec-critic'));
+                }
+                // Auto-set the flag so we don't re-scan every time
+                if (criticDone) {
+                  manifest.criticCompleted = true;
+                  const manifestPath = path.join(taskPath, 'manifest.json');
+                  try { fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2)); } catch { /* non-fatal */ }
+                }
+              }
+            } catch { /* non-fatal, treat as not done */ }
+          }
+
+          if (!criticDone) {
+            const criticMsg = execMode === 'blueprint'
+              ? `TaskPlex critic gate: Strategic and tactical critic reviews not completed.\n` +
+                `Spawn strategic-critic and tactical-critic before implementation.\n` +
+                `See planning.md Blueprint Phase A.2.`
+              : `TaskPlex critic gate: Spec critic review not completed.\n` +
+                `Spawn closure-agent for spec review before implementation.\n` +
+                `See planning.md Standard Phase A.2.`;
+            denyTool(
+              criticMsg + `\n\nAfter critics return APPROVED, set manifest.criticCompleted = true.\n` +
+              `Escape: manually set criticCompleted to true in manifest.json.`
+            );
+            return;
+          }
+        }
+
+        // --- Implementation delegated gate (standard/team/blueprint) ---
+        if (execMode === 'standard' || execMode === 'team' || execMode === 'blueprint') {
           if (!manifest.implementationDelegated) {
             denyTool(
               `TaskPlex implementation gate: Source file edits blocked.\n` +

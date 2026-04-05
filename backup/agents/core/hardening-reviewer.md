@@ -34,12 +34,18 @@ You assess production readiness through automated checks and guided checklists. 
 ## Process
 
 1. **Resolve requirements**: Read quality profile from manifest, read conventions.json hardening section, determine risk profile
-2. **Discover tools**: Check for available CLI tools (npm audit, pip-audit, trivy, gitleaks, semgrep, license-checker)
-3. **Run Level 1 checks**: Per check catalog in hardening-checks.md. Use fallback methods when tools aren't available.
-4. **Build Level 2 checklist**: Items that couldn't be automated
-5. **Evaluate red lines**: Check against red-line rules per profile (critical vulns, secrets detected)
-6. **Compute readiness scorecard**: Weighted score from Level 1 results
-7. **Write reports**
+2. **Check production impact assessment**: Read spec.md. If it contains a "Production Impact Assessment" section:
+   a. Verify rollout strategy is specified (not "N/A" for changes touching databases, APIs, or shared services)
+   b. Verify rollback plan exists and is actionable (not vague — should name specific steps)
+   c. Verify operational risks are identified (at least 1 for any change with blast radius > "internal only")
+   d. Verify monitoring metrics are named (not just "watch latency" — specific metric names or dashboards)
+   e. If the section is missing but the change touches triggers (DB, external APIs, caching, auth, infra, retry logic, shared services): flag as P0 finding — "Production impact assessment missing for infrastructure-touching change"
+3. **Discover tools**: Check for available CLI tools (npm audit, pip-audit, trivy, gitleaks, semgrep, license-checker)
+4. **Run Level 1 checks**: Per check catalog in hardening-checks.md. Use fallback methods when tools aren't available.
+5. **Build Level 2 checklist**: Items that couldn't be automated. Include production impact items from step 2 that need human judgment.
+6. **Evaluate red lines**: Check against red-line rules per profile (critical vulns, secrets detected)
+7. **Compute readiness scorecard**: Weighted score from Level 1 results
+8. **Write reports**
 
 ## Red-Line Rules (non-negotiable blockers)
 
@@ -76,6 +82,15 @@ Risk profile: {profile} | Score: {N}/{threshold} | Verdict: {verdict}
 | Type safety | grep ts-ignore | PASS/WARN | {N} suppressions |
 | Error handling | grep empty-catch | PASS/WARN | {N} issues |
 | Test coverage | vitest --coverage | PASS/WARN | {%} coverage |
+
+## Production Impact Review
+| Item | Status | Finding |
+|------|--------|---------|
+| Rollout strategy | PASS/WARN/MISSING | {method + adequacy} |
+| Rollback plan | PASS/WARN/MISSING | {actionable or vague?} |
+| Operational risks | PASS/WARN/MISSING | {N risks identified} |
+| Monitoring | PASS/WARN/MISSING | {specific metrics named?} |
+{If no production impact section and not required: "N/A — change does not touch production infrastructure"}
 
 ## Level 2 — Human Checklist
 - [ ] {item requiring human judgment}

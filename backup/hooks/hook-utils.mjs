@@ -265,6 +265,136 @@ export function readLatestCheckpoint(taskPath) {
   } catch { return null; }
 }
 
+// ── Planned Files (Session Guardian) ──────────────────────────────
+
+let _plannedFilesCache = null;
+let _plannedFilesCacheSize = -1;
+let _plannedFilesTaskPath = null;
+
+/**
+ * Read the set of planned files for scope checking.
+ * Primary: file-ownership.json (structured, written by planning agent)
+ * Fallback: regex extraction from spec.md File Map table
+ * Returns: { files: Set<string>, ownership: Map<string, string>, sharedFiles: Set<string> } | null
+ */
+export function readPlannedFiles(taskPath) {
+  // Try file-ownership.json first
+  const ownershipPath = path.join(taskPath, 'file-ownership.json');
+  if (fs.existsSync(ownershipPath)) {
+    try {
+      const stat = fs.statSync(ownershipPath);
+      if (_plannedFilesCache && _plannedFilesTaskPath === taskPath && _plannedFilesCacheSize === stat.size) {
+        return _plannedFilesCache;
+      }
+
+      const data = JSON.parse(fs.readFileSync(ownershipPath, 'utf8'));
+      const files = new Set();
+      const ownership = new Map();
+      const sharedFiles = new Set();
+
+      // Workers section
+      if (data.workers) {
+        for (const [workerId, worker] of Object.entries(data.workers)) {
+          const owned = worker.ownedFiles || worker.files || [];
+          const created = worker.creates || [];
+          for (const f of [...owned, ...created]) {
+            const norm = f.replace(/\\/g, '/');
+            files.add(norm);
+            ownership.set(norm, workerId);
+          }
+        }
+      }
+
+      // Shared files
+      if (data.sharedFiles) {
+        for (const f of data.sharedFiles) {
+          const norm = f.replace(/\\/g, '/');
+          files.add(norm);
+          sharedFiles.add(norm);
+        }
+      }
+
+      _plannedFilesCache = { files, ownership, sharedFiles };
+      _plannedFilesCacheSize = stat.size;
+      _plannedFilesTaskPath = taskPath;
+      return _plannedFilesCache;
+    } catch { /* fall through to spec */ }
+  }
+
+  // Fallback: parse spec.md for File Map table
+  const specPath = path.join(taskPath, 'spec.md');
+  if (fs.existsSync(specPath)) {
+    try {
+      const stat = fs.statSync(specPath);
+      if (_plannedFilesCache && _plannedFilesTaskPath === taskPath && _plannedFilesCacheSize === stat.size) {
+        return _plannedFilesCache;
+      }
+
+      const content = fs.readFileSync(specPath, 'utf8');
+      const files = new Set();
+      // Match table rows with file paths: | path/to/file.ext | action | desc |
+      const fileMapRegex = /\|\s*`?([a-zA-Z0-9_\-/.]+\.[a-zA-Z0-9]+)`?\s*\|/g;
+      let match;
+      while ((match = fileMapRegex.exec(content)) !== null) {
+        const norm = match[1].replace(/\\/g, '/');
+        if (norm.includes('/') || norm.includes('.')) {
+          files.add(norm);
+        }
+      }
+
+      if (files.size === 0) return null;
+
+      _plannedFilesCache = { files, ownership: new Map(), sharedFiles: new Set() };
+      _plannedFilesCacheSize = stat.size;
+      _plannedFilesTaskPath = taskPath;
+      return _plannedFilesCache;
+    } catch { /* fall through */ }
+  }
+
+  return null;
+}
+
+/**
+ * Infer which worker owns a file by reverse-lookup in file-ownership.json.
+ * Returns worker ID string or null if ambiguous/unknown.
+ */
+export function inferFileOwner(plannedFiles, normalizedPath) {
+  if (!plannedFiles || !plannedFiles.ownership) return null;
+  // Check if file path ends with any owned path (relative matching)
+  for (const [ownedPath, workerId] of plannedFiles.ownership) {
+    if (normalizedPath.endsWith(ownedPath) || normalizedPath.includes(ownedPath)) {
+      return workerId;
+    }
+  }
+  return null;
+}
+
+/**
+ * Check if a file is in the shared files set.
+ */
+export function isSharedFile(plannedFiles, normalizedPath) {
+  if (!plannedFiles || !plannedFiles.sharedFiles) return false;
+  for (const shared of plannedFiles.sharedFiles) {
+    if (normalizedPath.endsWith(shared) || normalizedPath.includes(shared)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Check if a file is in the planned file set.
+ */
+export function isPlannedFile(plannedFiles, normalizedPath) {
+  if (!plannedFiles || !plannedFiles.files) return false;
+  for (const planned of plannedFiles.files) {
+    if (normalizedPath.endsWith(planned) || normalizedPath.includes(planned)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // ── Source File Detection ──────────────────────────────────────────────
 
 const SOURCE_PATTERNS = [

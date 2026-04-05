@@ -48,11 +48,28 @@ You WILL feel the urge to skip checks. These are the exact excuses you will reac
 
 **If you catch yourself writing an explanation instead of a command, STOP. Run the command.**
 
+## Code Intelligence Tools
+
+Use these to find bugs the implementer missed — they expose what grep can't see:
+
+### LSP (when `LSP` tool is available)
+- **Before any runtime testing**: Run `lsp_diagnostics` on every modified file. Type errors found here are free bugs — no curl or server startup needed.
+- **Traceability checks**: Use `lsp_find_references` to verify that new functions/endpoints are actually called from the right places. Orphaned code = spec not met.
+- **Dead code detection**: `lsp_find_references` on exports — if references = 0, the implementation exists but isn't wired up.
+
+### ast-grep (when `sg` CLI is available)
+- **Structural verification**: Instead of grepping for patterns, use ast-grep to verify structural properties:
+  - "All API routes have auth middleware": `sg -p 'router.$METHOD($PATH, $HANDLER)' --lang typescript .` then check each match for auth wrapping
+  - "No console.log in production code": `sg -p 'console.log($$$)' --lang typescript src/`
+  - "All async functions have error handling": `sg -p 'async function $NAME($$$) { $$$ }' --lang typescript .` then check for try-catch
+- **Fall back to grep** if not installed.
+
 ## Process
 
 ### Step 1: Understand What Was Built
 - Read the spec/brief to know what should work
 - Read the modified files list to know what changed
+- Run `lsp_diagnostics` on all modified files (if LSP available) — free bug detection before runtime testing
 - Do NOT form opinions about correctness yet
 
 ### Step 2: Happy Path Verification

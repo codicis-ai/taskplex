@@ -17,7 +17,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const {
   parseStdin, normalizeCwd, findSessionTask, findProjectRoot,
   getPhaseNumber, isSourceFile, detectFileState,
-  callRuntime, isRuntimeAvailable
+  callRuntime, isRuntimeAvailable,
+  readPlannedFiles, inferFileOwner, isSharedFile, isPlannedFile
 } = await import(pathToFileURL(join(__dirname, 'hook-utils.mjs')).href);
 
 import fs from 'fs';
@@ -157,6 +158,108 @@ async function main() {
           }
           break; // Only track against the current in-progress wave
         }
+      }
+    }
+
+    // === Session Guardian: Scope & Ownership Checks (Phase 1) ===
+    const guardianPhases = new Set(['implementation', 'qa']);
+    if (editedFile && guardianPhases.has(manifest.phase)) {
+      const plannedFiles = readPlannedFiles(taskPath);
+      const normalizedEdit = editedFile.replace(/\\/g, '/');
+      const guardianWarnings = [];
+
+      // Scope check
+      if (plannedFiles && !isPlannedFile(plannedFiles, normalizedEdit)) {
+        // Only warn for source-ish files, not random config
+        if (isSourceFile(editedFile)) {
+          if (!manifest._guardianScopeWarned) manifest._guardianScopeWarned = [];
+          if (!manifest._guardianScopeWarned.includes(normalizedEdit)) {
+            manifest._guardianScopeWarned.push(normalizedEdit);
+            guardianWarnings.push(`SCOPE WARNING: ${normalizedEdit} not in planned file set. Possible scope creep.`);
+          }
+        }
+      }
+
+      // Ownership check (only for multi-agent routes with file-ownership.json)
+      if (plannedFiles && plannedFiles.ownership.size > 0 && !isSharedFile(plannedFiles, normalizedEdit)) {
+        const owner = inferFileOwner(plannedFiles, normalizedEdit);
+        // We can't reliably determine the current agent from hook context,
+        // but we can detect if the file is being modified and it's owned by a specific worker.
+        // Log ownership info in observations for cross-reference.
+        if (owner) {
+          // Track ownership edits for Phase 2 trigger detection
+          if (!manifest._guardianOwnershipEdits) manifest._guardianOwnershipEdits = {};
+          if (!manifest._guardianOwnershipEdits[normalizedEdit]) {
+            manifest._guardianOwnershipEdits[normalizedEdit] = [];
+          }
+          const editEntry = { timestamp: new Date().toISOString(), owner };
+          manifest._guardianOwnershipEdits[normalizedEdit].push(editEntry);
+
+          // If the same file has been edited with different inferred owners, that's a conflict
+          const owners = new Set(manifest._guardianOwnershipEdits[normalizedEdit].map(e => e.owner));
+          if (owners.size > 1) {
+            const ownerList = [...owners].join(', ');
+            if (!manifest._guardianOwnershipWarned) manifest._guardianOwnershipWarned = [];
+            if (!manifest._guardianOwnershipWarned.includes(normalizedEdit)) {
+              manifest._guardianOwnershipWarned.push(normalizedEdit);
+              guardianWarnings.push(`OWNERSHIP WARNING: ${normalizedEdit} edited by multiple owners (${ownerList}). Potential conflict.`);
+            }
+          }
+        }
+      }
+
+      // File count check
+      if (plannedFiles) {
+        const modifiedCount = (manifest.modifiedFiles || []).length;
+        const plannedCount = plannedFiles.files.size;
+        if (plannedCount > 0 && modifiedCount > plannedCount * 1.5) {
+          if (!manifest._guardianFileCountWarned) {
+            manifest._guardianFileCountWarned = true;
+            const pct = Math.round(((modifiedCount - plannedCount) / plannedCount) * 100);
+            guardianWarnings.push(`FILE COUNT WARNING: ${modifiedCount} files modified, plan specified ${plannedCount}. Exceeding scope by ${pct}%.`);
+          }
+        }
+      }
+
+      // Observation log (append-only)
+      try {
+        const obsPath = path.join(taskPath, 'observations.md');
+        const owner = plannedFiles ? inferFileOwner(plannedFiles, normalizedEdit) : null;
+        const inScope = plannedFiles ? isPlannedFile(plannedFiles, normalizedEdit) : null;
+        const shared = plannedFiles ? isSharedFile(plannedFiles, normalizedEdit) : false;
+        const ownerStr = owner || 'unknown';
+        let statusStr = inScope === null ? 'no-plan' : inScope ? 'in-scope' : 'OUT-OF-SCOPE';
+        if (shared) statusStr = 'shared';
+
+        const logLine = `[${new Date().toISOString()}] EDIT ${normalizedEdit} owner:${ownerStr} status:${statusStr}\n`;
+        fs.appendFileSync(obsPath, logLine);
+      } catch { /* non-fatal */ }
+
+      // Phase 2 trigger detection: write trigger file if thresholds crossed
+      const scopeWarnings = (manifest._guardianScopeWarned || []).length;
+      const ownershipWarnings = (manifest._guardianOwnershipWarned || []).length;
+      const buildFixRounds = manifest.iterationCounts?.buildFixRounds || 0;
+      const triggerPath = path.join(taskPath, 'guardian-trigger.json');
+
+      if (!fs.existsSync(triggerPath)) {
+        let trigger = null;
+        if (scopeWarnings >= 3) {
+          trigger = { trigger: 'scope-alarm', reason: `${scopeWarnings} files outside planned scope`, timestamp: new Date().toISOString() };
+        } else if (ownershipWarnings >= 1 && (manifest.executionMode === 'standard' || manifest.executionMode === 'team' || manifest.executionMode === 'blueprint')) {
+          trigger = { trigger: 'ownership-conflict', reason: `${ownershipWarnings} file(s) edited by multiple owners`, timestamp: new Date().toISOString() };
+        } else if (buildFixRounds >= 3) {
+          trigger = { trigger: 'build-loop', reason: `${buildFixRounds} build-fix rounds used (approaching limit)`, timestamp: new Date().toISOString() };
+        }
+
+        if (trigger) {
+          try { fs.writeFileSync(triggerPath, JSON.stringify(trigger, null, 2)); } catch { /* non-fatal */ }
+          guardianWarnings.push(`GUARDIAN TRIGGER: ${trigger.trigger} — ${trigger.reason}. Check guardian-alerts.md after next agent returns.`);
+        }
+      }
+
+      // Emit warnings via progress.md (will be picked up by renderProgress)
+      if (guardianWarnings.length > 0) {
+        manifest._guardianWarnings = guardianWarnings;
       }
     }
 
@@ -300,7 +403,25 @@ function renderProgress(taskPath, manifest) {
     if (manifest._progressNoteStale) {
       lines.push('');
       lines.push('### Progress Note Reminder');
-      lines.push('⚠️ No progress note in 15+ tool calls. Update manifest.progressNotes with current status.');
+      lines.push('No progress note in 15+ tool calls. Update manifest.progressNotes with current status.');
+    }
+
+    // Execution continuity reminder (PRD: Workflow Enforcement)
+    if (manifest.phase === 'implementation' || manifest.phase === 'qa') {
+      lines.push('');
+      lines.push('### Execution Continuity');
+      lines.push('EXECUTION CONTINUITY: After user approves plan, run to completion. Do not stop to ask "should I continue?"');
+    }
+
+    // Session Guardian warnings (PRD: Session Guardian Phase 1)
+    if (manifest._guardianWarnings && manifest._guardianWarnings.length > 0) {
+      lines.push('');
+      lines.push('### Session Guardian');
+      for (const w of manifest._guardianWarnings) {
+        lines.push(`- ${w}`);
+      }
+      // Clear after rendering — they'll re-appear if the condition persists
+      delete manifest._guardianWarnings;
     }
 
     fs.writeFileSync(path.join(taskPath, 'progress.md'), lines.join('\n'));

@@ -103,14 +103,14 @@ Skills improve from task feedback via staged pipeline:
 ~/.claude/skills/plan/ — planning trigger wrapper
 ```
 
-### Agents (19 core + 3 utility)
+### Agents (19 core + 4 utility)
 ```
 Core: architect, planning-agent, implementation-agent, verification-agent,
       review-standards (shared reference), security-reviewer, closure-agent,
       code-reviewer, hardening-reviewer, database-reviewer, e2e-reviewer,
       user-workflow-reviewer, compliance-agent, researcher, merge-resolver,
       bootstrap, prd-bootstrap, strategic-critic, tactical-critic
-Utility: build-fixer, drift-scanner, explore
+Utility: build-fixer, drift-scanner, explore, session-guardian
 ```
 
 ### Hooks (9 files in ~/.claude/hooks/)
@@ -129,13 +129,16 @@ start-task-sentinel.mjs
 | `interrupt-handling.md` | Interrupt handling design (simplified to natural conversation) |
 | `skill-evolution.md` | Skill evolution system design (copy of contract file) |
 | `harness-engineering-gaps.md` | Harness gap analysis: narrative, verification, Playwright, drift |
-| `multi-runtime-plan.md` | Cross-runtime distribution plan (Cursor, Codex, Gemini, Pi, OpenCode, Windsurf) |
+| `multi-runtime-plan.md` | Cross-runtime distribution plan (Cursor, Pi, Gemini, Codex, Antigravity, OpenCode, Windsurf) |
 | `runtime-research-april-2026.md` | Latest runtime extensibility research |
 | `test-plan.md` | Comprehensive test plan for all features (15 tests) |
 | `board-architecture.md` | CEO & Board multi-agent decision system for pi |
 | `business-agent-framework.md` | Enterprise agent deployment research synthesis |
 | `taskplex-pi-gap-analysis.md` | Claude Code → pi hook mapping with gap analysis |
 | `taskplex-pi-plugin.md` | Complete pi plugin build specification |
+| `session-guardian-design.md` | Background session observer: scope drift, convention violations, ownership conflicts during implementation. Inspired by Claude Code KAIROS. |
+| `prd-workflow-enforcement.md` | PRD: Hook gates for critic completion + user acknowledgment + continuity reminder. Layer 1 (structural). Ready to build. |
+| `prd-session-guardian.md` | PRD: Session guardian phases 1-3 (heartbeat checks → hybrid triggers → background agent). Layer 2 (behavioral). Build after Layer 1. |
 
 ## What's Built vs What's Designed
 
@@ -159,12 +162,19 @@ start-task-sentinel.mjs
 - Presentation detail levels (structured summaries, not full artifacts or terse one-liners)
 - Frontend development skill (standalone, works in any agent)
 - 7 split review agents + verification agent + drift scanner (was 1 unified reviewer)
-- OfficeCLI MCP for document generation
+- OfficeCLI skill for document generation (companion, not bundled)
+- Code intelligence in agents: LSP integration (diagnostics, references, rename, hover) + ast-grep (structural search/rewrite) — both optional with graceful degradation
+- Production impact assessment: conditional section in spec (DB, APIs, caching, auth, infra triggers) → hardening reviewer validates
+- Context-preserving QA fix loop: fix agent continues same context across rounds, verification agent re-checks (adversarial separation maintained)
+- Workflow enforcement gates: acknowledgment gate (blocks impl without user approval) + critic gate (blocks impl without critic review, artifact fallback) + execution continuity reminder
+- Session guardian Phase 1: scope/ownership/file-count checks in heartbeat, append-only observation log, Phase 2 trigger detection (scope-alarm, ownership-conflict, build-loop)
 
 ### Designed but Not Built
-- Multi-runtime distribution — Cursor, Codex, Gemini, Pi, OpenCode, Windsurf (plan in `multi-runtime-plan.md`)
+- Multi-runtime distribution — Cursor, Pi, Gemini, Codex, Antigravity, OpenCode, Windsurf (plan in `multi-runtime-plan.md`)
 - Pi plugin — fully specified in `taskplex-pi-plugin.md`
 - Board architecture — designed in `board-architecture.md`
 - Memplex HTTP API — needed for Pi integration (no MCP in Pi)
 - Skill performance tracking — deferred until multi-agent is default
+- Session guardian Phase 2 — trigger-based haiku analysis agent between wave dispatches. Design in `prd-session-guardian.md`.
+- Session guardian Phase 3 — full background agent (KAIROS-style). Deferred until runtime support ships.
 - Issue relations/dependencies — deferred, partially covered by prd-state.json

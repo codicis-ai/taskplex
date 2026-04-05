@@ -203,7 +203,7 @@ Context gathered from **4 sources** before asking anything:
 | API / Service | Call endpoints, check responses |
 | Library / Module | Skip (no runnable surface) |
 
-Steps: Smoke test → Journey walkthrough → Edge case probing → Bug triage + fix loop (max 3 rounds, with memplex error resolution check) → QA report.
+Steps: Smoke test → Journey walkthrough → Adversarial verification (spawns verification agent) → Bug triage + context-preserving fix loop (max 3 rounds, fix agent preserves context via SendMessage, verification agent re-checks after each round, memplex error resolution check) → QA report.
 
 ### Phase 5: Validation
 
@@ -407,10 +407,20 @@ The `tp-design-gate.mjs` hook serves two enforcement roles:
 - Artifact-to-sub-phase mapping (e.g., brief.md requires `brief-writing` phase)
 - Interaction evidence flags (`contextConfirmed`, `ambiguitiesResolved`, `approachSelected`, `sectionsApproved`)
 
-**Implementation gate** (during implementation/qa phases):
-- If `executionMode` is `team` or `blueprint` AND file is a source file AND `implementationDelegated` is false → **BLOCKS**
-- Ensures the orchestrator delegates to agents rather than coding inline
-- `.claude-task/` artifacts always allowed
+**Implementation gates** (during implementation/qa phases, inside `isSourceFile()` check):
+
+| Gate | Check | Routes | Block Message |
+|------|-------|--------|---------------|
+| **Acknowledgment** | `planSource.userAcknowledged !== true` | All (including Light) | "Run Pre-Implementation Acknowledgment" |
+| **Critic** | `criticCompleted !== true` | Standard, Team, Blueprint (Light exempt) | Route-specific: Blueprint mentions strategic/tactical, Standard mentions spec critic |
+| **Implementation delegated** | `implementationDelegated !== true` | Standard, Team, Blueprint | "Delegate to agents, not inline" |
+| **Wave** | Previous wave not completed/validated | Blueprint only | "Complete previous wave first" |
+
+Gate ordering: Acknowledgment → Critic → Implementation delegated → Wave. Each gate runs only if the previous one passes.
+
+The **critic gate** includes artifact-based fallback detection: if `criticCompleted` flag is not set but review files exist in `reviews/` (e.g., `strategic-review*.md`), the hook auto-sets the flag. This prevents deadlock when the orchestrator forgets to set it.
+
+`.claude-task/` artifacts always allowed — gates only block source file writes.
 
 ### 6.4 Compaction Survival
 
@@ -453,12 +463,12 @@ If memplex unavailable: block omitted, agent gets spec + brief + conventions onl
 |-------|-------|:---:|---------|
 | **planning-agent** | sonnet | No | Write spec.md from brief, interact with user |
 | **architect** | opus | No | Design architecture, write worker briefs, structured summary return |
-| **implementation-agent** | sonnet | **Yes** | Implement code changes per spec, mandatory self-verification |
-| **verification-agent** | sonnet | No | Adversarial testing — tries to break code. Two modes: test-plan (pre-impl) and verify (QA). Cannot edit files. |
+| **implementation-agent** | sonnet | **Yes** | Implement code changes per spec, mandatory self-verification. LSP diagnostics after edits, find_references before signature changes, ast-grep for structural transforms. |
+| **verification-agent** | sonnet | No | Adversarial testing — tries to break code. Two modes: test-plan (pre-impl) and verify (QA). Cannot edit files. LSP diagnostics sweep + ast-grep structural checks. |
 | **security-reviewer** | sonnet | No | OWASP-focused security scan, CVE lookups via WebSearch |
 | **closure-agent** | haiku | No | Requirements traceability, brief verification, spec critic |
-| **code-reviewer** | sonnet | No | Code quality, convention compliance |
-| **hardening-reviewer** | sonnet | No | Production readiness, runs audit tools via Bash |
+| **code-reviewer** | sonnet | No | Code quality, convention compliance. LSP type checks + ast-grep convention scanning. |
+| **hardening-reviewer** | sonnet | No | Production readiness, runs audit tools via Bash. Validates production impact assessment (rollout, rollback, risks, monitoring). |
 | **database-reviewer** | sonnet | No | Query correctness, schema, migration safety |
 | **e2e-reviewer** | sonnet | No | Live UI validation via Playwright MCP (preferred) or agent-browser (fallback) |
 | **user-workflow-reviewer** | haiku | No | Navigation coherence, orphaned features |
@@ -469,7 +479,8 @@ If memplex unavailable: block omitted, agent gets spec + brief + conventions onl
 | **prd-bootstrap** | opus | No | Initiative mode PRD generation |
 | **strategic-critic** | opus | No | Strategic review of PRDs |
 | **tactical-critic** | sonnet | No | Tactical review of per-feature specs |
-| **drift-scanner** | haiku | No | Read-only codebase drift scan (conventions, deps, imports, dead code) |
+| **drift-scanner** | haiku | No | Read-only codebase drift scan (conventions, deps, imports, dead code). LSP diagnostics sweep + ast-grep structural drift detection. |
+| **session-guardian** | haiku | No | One-shot analysis agent for scope/ownership/build-loop deviations. Spawned by orchestrator when guardian trigger file detected. |
 
 **Shared reference**: `review-standards.md` — anti-rationalization rules, evidence requirements, adversarial mindset. Referenced by all review agents.
 
@@ -538,7 +549,7 @@ The verification agent operates in two modes:
 
 **Mode 2 — Verify** (QA Step 4.5.4): Executes the pre-committed test plan. Must run commands for evidence — code reading rejected. At least 3 adversarial probes mandatory. Anti-rationalization prompts prevent skip-and-pass behavior.
 
-Cannot edit files. Reports bugs to the orchestrator for the bug fix loop.
+Cannot edit files. Reports bugs to the orchestrator for the context-preserving fix loop (see 7.11).
 
 ### 7.8 Implementation Coherence Check
 
@@ -552,6 +563,81 @@ After each agent returns, before build gate: spawn closure-agent (haiku) for a f
 - Injected ABOVE the phase checklist on session resume (first thing LLM reads)
 - Included in pre-compact checkpoints
 
+### 7.10 Code Intelligence (LSP + ast-grep)
+
+Four agents reference code intelligence tools with graceful degradation — agents fall back to grep/build when unavailable:
+
+**LSP operations used**:
+| Operation | Agents | Purpose |
+|-----------|--------|---------|
+| `lsp_diagnostics` | implementation, verification, code-review, drift | Type errors after edits, codebase-wide type health |
+| `lsp_find_references` | implementation, verification, code-review, drift | Call site discovery, dead export detection, wiring verification |
+| `lsp_rename` | implementation | Semantic rename across all files |
+| `lsp_goto_definition` | implementation | Navigate through aliases, re-exports, type defs |
+| `lsp_hover` | code-review | Type context without tracing definitions |
+
+**ast-grep patterns used**:
+- Convention violation scanning (default exports, wrong libraries, missing wrappers)
+- Auth middleware verification on API routes
+- Dead console.log detection (actual calls only, not comments)
+- Pattern compliance checking against conventions.json
+
+**Design principle**: No agent requires these tools. Every operation has a grep/build fallback. But when available, they prevent entire bug categories (stale references, structural drift, dead exports) that text search cannot catch.
+
+### 7.11 Context-Preserving QA Fix Loop
+
+When the QA phase finds bugs (Step 4.5.5), the fix loop preserves agent context across iterations instead of spawning cold agents:
+
+**For Standard/Blueprint routes**:
+1. **Round 1**: Spawn focused fix agent with verification report + original spec + bug list
+2. **Round 2+**: Continue same agent via `SendMessage` (preserves context). Falls back to new agent with round 1 summary if runtime doesn't support continuation.
+3. After each fix round, the **verification agent** re-checks — not the fix agent self-assessing
+
+**For Light route**: Fix inline (orchestrator already has context).
+
+**Key invariant**: The exit condition is controlled by the adversarial verification agent, not the fixer. Max 3 rounds, then hard escalate. This is bounded iteration with external verification — not open-ended self-assessment.
+
+### 7.12 Production Impact Assessment
+
+Conditional section in spec.md, triggered when tasks touch production-sensitive areas.
+
+**Detection** (orchestrator, before spawning planning agent): Grep brief.md + modified files for triggers:
+- Database queries, schemas, migrations
+- API endpoints serving external traffic
+- Caching logic, TTLs, cache invalidation
+- Authentication, authorization, session handling
+- Infrastructure configuration (CI/CD, deployment, env vars)
+- Retry logic, timeouts, circuit breakers
+- Shared services consumed by multiple systems
+
+**Spec section** (written by planning agent when triggered):
+- **Blast radius**: Services affected, traffic exposure
+- **Rollout strategy**: Feature flag, canary, blue-green, or immediate
+- **Rollback plan**: Specific steps to reverse the change
+- **Operational risks**: Identified risks with mitigations
+- **Monitoring**: Key metrics and alert conditions
+
+**Validation** (hardening reviewer): Checks that the section exists when triggers are present, and that each sub-section is substantive (specific rollback steps, named metrics, at least 1 operational risk). Missing section flagged as P0 for infrastructure-touching changes.
+
+**Skipped for**: Pure UI changes, internal tooling, documentation, test-only changes, local dev scripts.
+
+### 7.13 Session Guardian (Behavioral Enforcement)
+
+A background observation system layered on top of structural gates. Three phases:
+
+**Phase 1 (built)**: Heartbeat hook (`tp-heartbeat.mjs`) runs cheap synchronous checks on every file edit during implementation/QA:
+- **Scope check**: Compares edited file against planned file set (from `file-ownership.json` primary, `spec.md` regex fallback). Warns on out-of-scope source files.
+- **Ownership check**: Tracks edits per file with inferred owner from `file-ownership.json` reverse-lookup. Warns when multiple owners edit the same file.
+- **File count check**: Warns when `modifiedFiles` count exceeds planned count by >50%.
+- **Observation log**: Append-only log at `.claude-task/{taskId}/observations.md` — every edit with timestamp, file, owner, status. Used by Phase 2 triggers and memplex at completion.
+- **Phase 2 triggers**: Writes `guardian-trigger.json` when thresholds crossed (3+ scope warnings, 1+ ownership conflict, 3+ build-fix rounds).
+
+**Phase 2 (triggers built, agent spawning via orchestrator)**: Orchestrator checks for `guardian-trigger.json` between wave dispatches. If present, spawns `session-guardian` agent (haiku, read-only) for deeper analysis. Agent reads observations + spec, returns structured alert. Orchestrator writes to `guardian-alerts.md`.
+
+**Phase 3 (deferred)**: Full KAIROS-style persistent background agent. Depends on runtime support for background agents. Design in `session-guardian-design.md`.
+
+**Relationship to structural gates**: Gates (acknowledgment, critic, implementation, wave) block tool calls. Guardian observes and advises. Gates catch state violations. Guardian catches behavioral drift. Defense-in-depth.
+
 ---
 
 ## 8. State Management
@@ -564,7 +650,7 @@ Central state file. Key fields:
 |----------|--------|
 | Phase tracking | `phase`, `designPhase`, `phaseChecklist` |
 | Interaction evidence | `designInteraction` (contextConfirmed, ambiguitiesResolved, approachSelected, sectionsApproved, contextSources, contextDensity) |
-| Implementation | `implementationDelegated`, `modifiedFiles`, `implementationAgents` |
+| Implementation | `implementationDelegated`, `criticCompleted`, `modifiedFiles`, `implementationAgents` |
 | Validation | `validation.*` (per-gate results) |
 | Quality | `qualityProfile`, `degradations`, `overrides`, `escalations` |
 | Memplex | `memplexAvailable`, `memplexContext`, `knowledgeSaved` |

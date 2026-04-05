@@ -37,11 +37,30 @@ You receive a prompt pointing you to files on disk. Read these yourself — the 
 9. **Stay within your turn budget.** You have a max_turns limit. Plan your work to fit.
 10. **Never modify files outside your assigned scope** unless the spec explicitly lists them.
 
+## Code Intelligence Tools
+
+Use these when available — they prevent entire categories of bugs:
+
+### LSP (when `LSP` tool is available)
+- **After every file edit**: Check `lsp_diagnostics` for the edited file. Fix type errors and warnings immediately — don't wait for the build step.
+- **Before modifying a function signature**: Run `lsp_find_references` to find ALL call sites. Update every one. Grep misses re-exports, dynamic calls, and string-based references.
+- **When renaming**: Use `lsp_rename` instead of find-and-replace. It handles scoping, imports, and re-exports correctly.
+- **When navigating unfamiliar code**: Use `lsp_goto_definition` instead of grepping for the definition — it resolves through aliases, re-exports, and type definitions.
+
+### ast-grep (when `sg` CLI is available)
+- **For structural searches**: Use `sg --pattern 'PATTERN' --lang LANG .` instead of grep when you need to match code structure, not text. Examples:
+  - Find all calls to a function: `sg -p 'fetchUser($$$)' --lang typescript .`
+  - Find components missing error handling: `sg -p 'useEffect($CALLBACK, $DEPS)' --lang tsx .`
+- **For batch transforms**: When the spec requires renaming a pattern across the codebase, ast-grep rewrites preserve formatting and only match actual code (not comments or strings).
+- **Fall back to grep** if ast-grep is not installed. Don't block on it.
+
 ## Execution Steps
 
 1. Read all provided context
 2. Identify files to create/modify from the spec
 3. Implement changes file by file
+   - After each file edit: run `lsp_diagnostics` if LSP available — fix errors before moving on
+   - When changing signatures: run `lsp_find_references` first — update all call sites
 4. **Self-verification (MANDATORY)** — run every command in your handoff's `verification` block:
    a. Run typecheck command — fix all errors
    b. Run lint command — fix all warnings (no suppressions, no eslint-disable)

@@ -119,11 +119,45 @@ One paragraph: what we're doing and why.
 - Performance: ...
 - Error handling: ...
 
+## Production Impact Assessment (conditional — see below)
+### Blast Radius
+- Services affected: {list of services/systems this change touches}
+- Traffic exposure: {percentage of traffic/users affected, or "internal only"}
+
+### Rollout Strategy
+- Method: {feature flag | canary | blue-green | immediate | N/A}
+- Rollback trigger: {metric threshold or condition that triggers rollback}
+- Rollback plan: {specific steps to reverse the change}
+
+### Operational Risks
+- {Risk 1}: {description} — Mitigation: {what prevents this}
+- {Risk 2}: {description} — Mitigation: {what prevents this}
+
+### Monitoring
+- Key metrics to watch: {latency, error rate, resource usage, etc.}
+- Alert conditions: {what should page someone}
+
 ## Verification Plan (standard + enterprise profiles)
 | Requirement | Test | File |
 |-------------|------|------|
 | ... | ... | ... |
 ```
+
+### When to include "Production Impact Assessment"
+
+Include this section when ANY of these are true:
+- Change touches database queries, schemas, or migrations
+- Change touches API endpoints that serve external traffic
+- Change modifies caching logic, TTLs, or cache invalidation
+- Change touches authentication, authorization, or session handling
+- Change modifies infrastructure configuration (CI/CD, deployment, env vars)
+- Change introduces or modifies retry logic, timeouts, or circuit breakers
+- Change modifies shared services or libraries consumed by multiple systems
+- User explicitly mentions production concerns
+
+**Skip** for: pure UI changes, internal tooling, documentation, test-only changes, local development scripts.
+
+When skipped, omit the section entirely — no placeholder.
 
 ### 2. Conventions Snapshot: `.claude-task/{taskId}/conventions-snapshot.json`
 

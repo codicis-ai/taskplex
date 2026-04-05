@@ -17,7 +17,7 @@ Distribute TaskPlex as **native packages for each runtime** — not a generic sk
 | **Codex CLI** | Plugin + marketplace | Yes | 5 events | Multi-agent v2 | Yes | Yes | **4 — Medium** |
 | **OpenCode** | TypeScript plugin (npm) | Yes | 25+ events | Custom agents | Yes | npm | **5 — Medium** |
 | **Windsurf** | Manual (hooks.json + rules) | Yes | 12 events | No | Yes | No | **6 — Low** |
-| **Antigravity** | MCP + skills | Yes | Unknown | Yes (Jetski) | Yes | MCP hub | **7 — Low** |
+| **Antigravity** | MCP + VS Code ext + skills | Yes | No (monitor) | Yes (Manager View) | Yes (MCP Store) | Open VSX | **5 — Medium** |
 | **Aider** | CONVENTIONS.md only | Partial | No | No | No | No | **8 — Low** |
 
 ## Architecture
@@ -44,12 +44,12 @@ taskplex-core/
 ├── agents/
 │   ├── architect.md              # Opus design (structured summary return)
 │   ├── planning-agent.md         # Spec writing (structured summary)
-│   ├── implementation-agent.md   # Code impl (mandatory self-verification)
-│   ├── verification-agent.md     # Adversarial tester (test-plan + verify modes)
+│   ├── implementation-agent.md   # Code impl (LSP diagnostics after edits, ast-grep transforms)
+│   ├── verification-agent.md     # Adversarial tester (LSP traceability, ast-grep structural checks)
 │   ├── review-standards.md       # Shared anti-rationalization rules
 │   ├── security-reviewer.md
 │   ├── closure-agent.md
-│   ├── code-reviewer.md
+│   ├── code-reviewer.md          # LSP type checks, ast-grep convention scanning
 │   ├── hardening-reviewer.md
 │   ├── database-reviewer.md
 │   ├── e2e-reviewer.md           # Playwright MCP preferred, agent-browser fallback
@@ -62,7 +62,7 @@ taskplex-core/
 │   ├── strategic-critic.md
 │   ├── tactical-critic.md
 │   ├── build-fixer.md
-│   └── drift-scanner.md
+│   └── drift-scanner.md          # LSP diagnostics sweep, ast-grep structural drift
 └── skills/
     ├── frontend/            # Standalone frontend development
     ├── evaluate/            # Product evaluation
@@ -96,6 +96,9 @@ Every runtime package must implement or gracefully degrade these features:
 | **Mid-task changes** | User can redirect anytime, state stays current | Skill instructions |
 | **Frontend parity** | API endpoints must have UI consumers when frontend detected | Skill instructions |
 | **Journey verification** | Trace ACs to code, detect orphaned endpoints | Validation phase |
+| **LSP integration** | Diagnostics after edits, find_references for traceability, semantic rename. Graceful when unavailable. | Agent definitions (impl, verification, code-review, drift) |
+| **ast-grep** | Structural code search/rewrite for verification, drift scanning, convention checking. Optional — falls back to grep. | Agent definitions + optional CLI dependency |
+| **Per-phase MCP scoping** | Activate MCPs per phase, not globally. Reduces context waste. Runtime-dependent — not possible in Claude Code today. | Runtime capability (OpenCode, Pi, Cursor plugins) |
 
 ### Per-Runtime Native Packages
 
@@ -139,6 +142,16 @@ taskplex-claude/             # Claude Code (current implementation)
 ├── hooks/                   # 9 .mjs hook files
 ├── commands/                # taskplex.md, tp.md, plan.md, solidify.md, drift.md
 ├── settings-fragment.json   # Hook wiring for settings.json
+└── core/ → taskplex-core
+
+taskplex-antigravity/        # Antigravity (MCP Store + VS Code ext)
+├── mcp_config.json          # MCP server configs (memplex, playwright)
+├── skills/                  # SKILL.md files (phase entry points)
+├── rules/                   # .md rule files for agent guidance
+├── vscode-ext/              # VS Code extension for partial enforcement
+│   ├── package.json
+│   └── extension.ts         # File watchers, command interception
+├── install.sh               # Configures mcp_config.json + copies skills
 └── core/ → taskplex-core
 
 taskplex-windsurf/           # Windsurf (manual install)
@@ -273,23 +286,77 @@ taskplex-windsurf/           # Windsurf (manual install)
 
 **Distribution**: `./install.sh` copies files + patches hooks.json.
 
-### Antigravity
+### Antigravity (priority 5)
 
-**Lower priority** — Google's platform with its own agent orchestration (Manager View). TaskPlex would work alongside rather than replace it.
+**Why medium priority**: Google's agent-first IDE (VS Code fork, announced Nov 2025, public preview). First-class MCP Store makes memplex distribution trivial — easy revenue path. Multi-model support (Gemini 3.1 Pro, Claude Opus/Sonnet 4.6, GPT-OSS-120B) means TaskPlex users on Claude are already there. Google is pushing hard (free tier, Firebase integration, Google Cloud connectors).
 
-**Integration path**: MCP servers (memplex, playwright, officecli) work via Antigravity's MCP support. Skills work via standard SKILL.md format. Full workflow orchestration would conflict with Manager View.
+**Platform architecture**: Two views — Editor View (standard IDE + agent sidebar) and Manager View (orchestration dashboard for dispatching multiple agents in parallel across workspaces). Agents can see editor, run shell commands, and interact with browser via Chrome extension. Generates "Artifacts" (task lists, plans, screenshots, browser recordings) for verification.
+
+**Integration model**: TaskPlex as **governance layer for Manager View**, not a replacement. Manager View is a generic dispatcher — it doesn't enforce design gates, three-contract chains, verification agents, or quality profiles. TaskPlex adds structured governance on top. Positioning: "TaskPlex adds governance to your Manager View agents."
+
+**Mapping**:
+| TaskPlex Concept | Antigravity Primitive |
+|-----------------|----------------------|
+| `/tp` command | SKILL.md entry point (standard format) |
+| Design gate | **Advisory only** — no agent lifecycle hooks yet |
+| Pre-commit gate | VS Code extension API (file watchers, command interception) — partial |
+| Implementation gate | **Advisory only** — prompt-level enforcement via skills |
+| Agent spawning | Manager View dispatches agents across workspaces |
+| Worktree isolation | Manager View workspace isolation (native) |
+| Memplex integration | MCP Store — one-click install, `mcp_config.json` for custom config |
+| Playwright | MCP Store (`@playwright/mcp@latest`) or Chrome extension (native) |
+| Session recovery | VS Code extension state API |
+| Quality profiles | Skill instructions (advisory) |
+
+**Key advantage**: MCP Store with UI and one-click install is the easiest MCP integration of any runtime. Memplex becomes discoverable alongside Google Cloud MCP servers (AlloyDB, BigQuery, Spanner, etc.) — high-visibility placement.
+
+**Key limitation**: No evidence of agent lifecycle hooks (PreToolUse, PostToolUse equivalents). Without hooks, enforcement is advisory-only:
+- MCP tools can advise but not block
+- Skills provide prompt-level governance
+- VS Code extension API offers file watchers and command interception, but not agent-tool interception
+- Design gate and pre-commit gate cannot be hard-enforced
+
+**Enforcement tier**: Advisory. Closer to Aider (prompt-level) than Cursor (hook-enforced). Acceptable for Lean quality profile; Standard/Enterprise profiles degrade to best-effort.
+
+**Watch item**: Monitor for agent hook API announcements. If Antigravity adds PreToolUse/PostToolUse equivalents or a plugin hook system, bump to priority 3 and implement hard enforcement.
+
+**Distribution**: MCP servers via MCP Store + SKILL.md files + optional VS Code extension (for partial hook enforcement via file watchers). No dedicated marketplace submission needed — Open VSX for the extension, MCP Store for the servers.
+
+**Package structure**:
+```
+taskplex-antigravity/
+├── mcp_config.json          # MCP server configs (memplex, playwright)
+├── skills/                  # SKILL.md files (phase entry points)
+├── rules/                   # .md rule files for agent guidance
+├── vscode-ext/              # VS Code extension for partial enforcement
+│   ├── package.json
+│   └── extension.ts         # File watchers, command interception
+├── install.sh               # Configures mcp_config.json + copies skills
+└── core/ → taskplex-core
+```
 
 ## MCP Servers (Universal, All Runtimes)
 
 These work identically everywhere MCP is supported:
 
-| MCP Server | Package | Purpose |
-|------------|---------|---------|
-| Playwright | `@playwright/mcp@latest` | Browser automation, visual QA |
-| Memplex | (custom) | Cross-session knowledge |
-| OfficeCLI | `officecli mcp` | Document generation |
+| MCP Server | Package | Purpose | Bundled |
+|------------|---------|---------|---------|
+| Playwright | `@playwright/mcp@latest` | Browser automation, visual QA | Yes — used by e2e-reviewer and QA phase |
+| Memplex | (custom) | Cross-session knowledge | Yes — used by all phases |
+| OfficeCLI | `officecli mcp` | Office document generation | No — companion skill, install separately |
 
-Each runtime package includes MCP config in its manifest. The servers themselves are runtime-agnostic.
+Bundled servers are included in each runtime package's MCP config. OfficeCLI is a standalone companion skill — not part of the TaskPlex workflow, available if users need document generation.
+
+## Optional Tool Dependencies
+
+These tools are referenced in agent definitions with graceful degradation — agents use them when available, fall back to grep/build otherwise.
+
+| Tool | Install | Purpose | Used By |
+|------|---------|---------|---------|
+| **LSP** | Runtime-specific (plugin or built-in) | Diagnostics, references, rename, hover | implementation, verification, code-review, drift |
+| **ast-grep** | `brew install ast-grep` / `npm i -g @ast-grep/cli` / `cargo install ast-grep` | Structural code search and rewrite | implementation, verification, code-review, drift |
+
+**Design principle**: No agent REQUIRES these tools. Every LSP/ast-grep operation has a grep/build fallback. But when available, they eliminate entire bug categories (stale references, structural convention drift, dead exports) that text search cannot catch.
 
 ## Phase File Path Abstraction
 
@@ -309,27 +376,59 @@ Each runtime resolves `$TASKPLEX_HOME`:
 | Codex | `~/.codex/plugins/taskplex/core/` |
 | Gemini CLI | `~/.gemini/extensions/taskplex/core/` |
 | OpenCode | `node_modules/taskplex-opencode/core/` |
+| Antigravity | `~/.antigravity/extensions/taskplex/core/` |
 | Windsurf | `~/.windsurf/taskplex/` |
 
 ## Hook Enforcement Mapping
 
 The 3 critical hooks (design gate, pre-commit, implementation gate) map to each runtime:
 
-| Hook | Claude Code | Cursor | Codex | Gemini | OpenCode | Windsurf |
-|------|-----------|--------|-------|--------|----------|----------|
-| Design gate | PreToolUse Edit\|Write | Plugin hook | UserPromptSubmit* | BeforeTool+ask | tool.execute.before | pre_write_code |
-| Pre-commit | PreToolUse Bash | Plugin hook | PreToolUse Bash | BeforeTool | tool.execute.before | pre_run_command |
-| Impl gate | PreToolUse Edit\|Write | Plugin hook | UserPromptSubmit* | BeforeTool | tool.execute.before | pre_write_code |
+| Hook | Claude Code | Cursor | Codex | Gemini | OpenCode | Windsurf | Antigravity |
+|------|-----------|--------|-------|--------|----------|----------|-------------|
+| Design gate | PreToolUse Edit\|Write | Plugin hook | UserPromptSubmit* | BeforeTool+ask | tool.execute.before | pre_write_code | Advisory† |
+| Pre-commit | PreToolUse Bash | Plugin hook | PreToolUse Bash | BeforeTool | tool.execute.before | pre_run_command | VS Code ext† |
+| Impl gate | PreToolUse Edit\|Write | Plugin hook | UserPromptSubmit* | BeforeTool | tool.execute.before | pre_write_code | Advisory† |
 
 \* Codex PreToolUse is Bash-only — workaround via prompt augmentation.
+† Antigravity has no agent lifecycle hooks yet. Design/impl gates are prompt-level only. Pre-commit uses VS Code extension API command interception (partial). Monitor for hook API additions.
+
+## Code Intelligence Capability Matrix
+
+LSP and ast-grep are referenced in agent definitions with graceful degradation — agents fall back to grep/build-based checks when unavailable.
+
+| Capability | Claude Code | Cursor | Codex | Gemini CLI | OpenCode | Windsurf | Antigravity |
+|------------|-----------|--------|-------|------------|----------|----------|-------------|
+| **LSP** | Plugin (opt-in, marketplace) | Built-in | Unknown | Unknown | Built-in (20+ servers, auto-download) | Built-in | Built-in (VS Code fork) |
+| **ast-grep** | Skill (`npx skills add ast-grep/agent-skill`) or CLI | CLI via terminal | CLI via sandbox | CLI via terminal | CLI + custom tool | CLI via terminal | CLI via terminal |
+| **Per-phase MCP scoping** | Not possible (global settings.json) | Plugin can manage | Not possible | Extension can manage | Plugin SDK (`defineTool`) | Not possible | Not possible (global mcp_config.json) |
+
+### LSP Tools Referenced in Agent Definitions
+
+| LSP Operation | Used By | Purpose |
+|---------------|---------|---------|
+| `lsp_diagnostics` | implementation-agent, verification-agent, code-reviewer, drift-scanner | Type errors after edits, codebase-wide type health |
+| `lsp_find_references` | implementation-agent, verification-agent, code-reviewer, drift-scanner | Call site discovery, dead export detection, wiring verification |
+| `lsp_rename` | implementation-agent | Semantic rename across all files (scoping-aware) |
+| `lsp_goto_definition` | implementation-agent | Navigate through aliases, re-exports, type defs |
+| `lsp_hover` | code-reviewer | Type context without tracing through definitions |
+
+### ast-grep Patterns Referenced in Agent Definitions
+
+| Pattern Use Case | Used By | Example |
+|-----------------|---------|---------|
+| Convention violation scan | code-reviewer, drift-scanner | `sg -p 'export default $EXPR' --lang tsx src/components/` |
+| Auth middleware verification | verification-agent | `sg -p 'router.$METHOD($PATH, $HANDLER)' --lang typescript .` |
+| Dead console.log detection | verification-agent, drift-scanner | `sg -p 'console.log($$$)' --lang typescript src/` |
+| Pattern compliance | code-reviewer, drift-scanner | `sg -p 'import $$$from "redux"' --lang typescript .` |
+| Structural transforms | implementation-agent | Batch rewrites preserving formatting |
 
 ## Model Tier Mapping
 
-| Tier | Claude Code | Cursor 3 | Codex | Gemini CLI | OpenCode |
-|------|-----------|----------|-------|------------|----------|
-| High (architect) | opus | o3/opus | o3 | gemini-3-pro | strongest |
-| Standard (impl) | sonnet | sonnet/gpt-4.1 | gpt-4.1 | gemini-2.5-flash | default |
-| Fast (closure) | haiku | haiku/gpt-4.1-mini | gpt-4.1-mini | gemini-2.5-flash | fastest |
+| Tier | Claude Code | Cursor 3 | Codex | Gemini CLI | OpenCode | Antigravity |
+|------|-----------|----------|-------|------------|----------|-------------|
+| High (architect) | opus | o3/opus | o3 | gemini-3-pro | strongest | opus/gemini-3-pro |
+| Standard (impl) | sonnet | sonnet/gpt-4.1 | gpt-4.1 | gemini-2.5-flash | default | sonnet/gemini-3-flash |
+| Fast (closure) | haiku | haiku/gpt-4.1-mini | gpt-4.1-mini | gemini-2.5-flash | fastest | haiku/gemini-3-flash |
 
 ## Implementation Phases
 
@@ -371,38 +470,44 @@ The 3 critical hooks (design gate, pre-commit, implementation gate) map to each 
 - Policy files for quality profiles
 - Test and publish
 
-### Phase 6: OpenCode Plugin (3-5 days)
+### Phase 6: Antigravity Package (2-3 days)
+- Configure `mcp_config.json` for memplex, playwright
+- Create SKILL.md entry points for /taskplex, /plan, /drift, /solidify
+- Build VS Code extension for partial enforcement (file watchers, command interception)
+- Write rule files for agent guidance (design-first, verification, quality profiles)
+- Test end-to-end with Lean profile (advisory enforcement)
+- Publish extension to Open VSX, document MCP Store setup
+
+### Phase 7: OpenCode Plugin (3-5 days)
 - TypeScript plugin with @opencode-ai/plugin SDK
 - Full state machine implementation (25+ hooks)
 - Custom tools for manifest management
 - In-process + disk hybrid state
 - npm publish
 
-### Phase 7: Windsurf + Antigravity (1-2 days each)
-- Windsurf: hooks.json + rules + install script
-- Antigravity: MCP + skills (minimal, leverages existing MCP support)
+### Phase 8: Windsurf (1-2 days)
+- hooks.json + rules + install script
 
 ## Companion Skills Distribution
 
 These skills are already SKILL.md format and work across all runtimes:
 
-| Skill | Status | Notes |
-|-------|--------|-------|
-| `frontend/` | Ready | Design system, a11y, responsive, component spec |
-| `evaluate/` | Ready | Audit + review modes |
-| `plan/` | Needs update | Currently references Claude Code commands |
-| `officecli/` | Ready | MCP-based, universal |
+| Skill | Status | Bundled | Notes |
+|-------|--------|---------|-------|
+| `frontend/` | Ready | Yes | Design system, a11y, responsive, component spec |
+| `evaluate/` | Ready | Yes | Audit + review modes |
+| `plan/` | Needs update | Yes | Currently references Claude Code commands |
+| `officecli/` | Ready | No | Standalone document generation — not part of TaskPlex workflow, install separately |
 
-Each runtime package bundles these skills alongside the core workflow.
+Bundled skills ship with each runtime package. Non-bundled skills are available as separate installs for users who need them.
 
 ## Revenue Model Consideration
 
 | Component | Free | Paid (via memplex) |
 |-----------|------|-------------------|
 | TaskPlex workflow | Yes — all phases, hooks, gates | — |
-| Companion skills | Yes — frontend, evaluate, plan | — |
+| Companion skills | Yes — frontend, evaluate, plan, officecli | — |
 | Memplex integration | — | Cross-session knowledge, error resolutions, file coupling |
-| OfficeCLI | Free | — |
 | Playwright MCP | Free | — |
 
 TaskPlex is free. Memplex is the upsell. The cross-runtime distribution expands the memplex addressable market — every TaskPlex user on any runtime sees the "cross-session persistence requires memplex" note.
