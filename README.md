@@ -13,25 +13,29 @@ TaskPlex wraps every development task in a governed workflow: design before code
 ```
 /tp add user authentication --blueprint
 
-  Phase 1: Design ──── Adaptive questions, convention scan, approach selection
-  Phase 2: Planning ── Spec writing, critic review, user approval
-  Phase 3: Implement ─ Multi-agent parallel execution in git worktrees
-  Phase 4: QA ──────── Product-type-aware testing, adversarial verification
-  Phase 5: Validate ── Security, closure, code review, hardening, compliance
-  Phase 6: Complete ── Knowledge persistence, git commit, PR
+  Phase 1: Design
+    A. Convention scan ─── Codebase patterns, memplex conventions
+    B. Research ────────── References, problem space, ecosystem survey
+    C. Product context ─── User profiles, journeys (DOES/SEES/FEELS), JTBD, contract
+    D. Intent ─────────── Synthesize, confirm approach, write intent file (architect guardrails)
+  Phase 2: Planning ────── Spec writing (within guardrails), critic review + debate log, user reviews full draft
+  Phase 3: Implement ───── Multi-agent parallel execution in git worktrees
+  Phase 4: QA ──────────── Product-type-aware testing with structured journey input
+  Phase 5: Validate ────── Artifact-based gates, security, closure, code review, hardening, compliance
+  Phase 6: Complete ────── Knowledge persistence, git commit, PR
 ```
 
-Every phase transition is enforced by hooks. The agent cannot skip design, bypass critics, or commit without validation.
+Every phase transition is enforced by artifact-based gates. The agent cannot skip design (no spec.md = blocked), bypass critics (no review files = blocked), or commit without validation.
 
 ## Key Features
 
 ### Execution Routes
 
-| Route | Flag | What Happens |
-|-------|------|-------------|
-| **Light** | `--light` | Single agent, minimal spec, self-review |
-| **Standard** | default | Planning agent + spec critic + 1-3 parallel workers + tactical critic |
-| **Blueprint** | `--blueprint` | Opus architect + strategic/tactical critics + multi-agent in worktrees + waves |
+| Route | Flag | Design Depth | What Happens |
+|-------|------|-------------|-------------|
+| **Light** | `--light` | Convention scan + intent confirm | Single agent, minimal spec, self-review |
+| **Standard** | default | Conventions + lightweight journeys + intent file | Planning agent + spec critic + 1-3 parallel workers + tactical critic |
+| **Blueprint** | `--blueprint` | Full: research + product context + journeys + intent guardrails | Opus architect + strategic/tactical critics + multi-agent in worktrees + waves |
 
 ### Enforcement (9 Hooks)
 
@@ -158,17 +162,18 @@ This repository contains the design, documentation, and backups for TaskPlex:
 |----------|---------|
 | `taskplex-documentation.md` | Complete technical documentation |
 | `multi-runtime-plan.md` | Cross-runtime distribution plan (8 runtimes) |
+| `design-plan-merge.md` | Merge /plan's rich phases (research, journeys, intent guardrails) into /tp |
 | `session-guardian-design.md` | Background session observer design (inspired by KAIROS) |
-| `prd-workflow-enforcement.md` | PRD: Structural enforcement gates |
+| `prd-workflow-enforcement.md` | PRD: Artifact-based enforcement gates |
 | `prd-session-guardian.md` | PRD: Behavioral enforcement (3 phases) |
 | `memplex-integration.md` | Memplex integration spec |
 | `test-plan.md` | Comprehensive test plan (15 tests) |
 
 ## Status
 
-**Built and active**: 5 commands, 9 hooks, 6 phase files, 8 contracts, 23 agents, 3 skills, workflow enforcement gates, session guardian Phase 1, TaskPlex-managed worktrees.
+**Built and active**: 5 commands, 9 hooks, 6 phase files, 8 contracts, 23 agents, 3 skills, artifact-based enforcement gates, session guardian Phase 1, TaskPlex-managed worktrees, code intelligence (LSP + ast-grep), production impact assessment, context-preserving QA fix loop.
 
-**Designed, not yet built**: Multi-runtime distribution, Pi plugin, session guardian Phases 2-3, board architecture, memplex HTTP API.
+**Designed, not yet built**: /plan merge into /tp (research, product context, journeys, intent guardrails), multi-runtime distribution, Pi plugin, session guardian Phases 2-3, board architecture, memplex HTTP API.
 
 ## License
 

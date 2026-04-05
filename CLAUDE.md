@@ -18,12 +18,14 @@ TaskPlex is a **workflow orchestration framework** that enforces structured, mul
 ### Workflow Phases (7 phases, sequential)
 1. **Initialization** — Parse task, create manifest, create task list, detect memplex, load context, detect project type
 2. **Design (Sub-phase A)** — Convention scan + memplex convention lookup + optional user questions
-3. **Design (Sub-phase B)** — Adaptive intent exploration: gather 4 context sources, synthesize, confirm, resolve gaps
-4. **Planning** — Spec writing by planning agent, spec critic review, user reviews full spec inline, refine task list
-5. **Implementation** — Coherence check, build gate, documentation update. Team/Blueprint: delegate to agents (enforced by hook)
-5.5. **QA** — Product-type-aware testing with memplex error resolution
-6. **Validation** — 12-step pipeline: artifact, traceability, build, security, closure, code review, conditional, hardening, compliance
-7. **Completion** — Memplex knowledge persistence, skill evolution, git commit, PR, task summary
+3. **Design (Sub-phase B)** — Research & discovery: references, problem space, codebase scan (Blueprint + Standard-conditional)
+4. **Design (Sub-phase C)** — Product context: user profiles, journeys (DOES/SEES/FEELS), JTBD, feature assessment, contract (Blueprint only)
+5. **Design (Sub-phase D)** — Adaptive intent exploration: synthesize context, lightweight journeys (Standard), write intent file as architect guardrails
+6. **Planning** — Spec writing by planning agent (with intent guardrails), critic review (with debate log), user reviews full draft (Blueprint) or summary (Standard), refine task list
+7. **Implementation** — Coherence check, build gate, documentation update. Team/Blueprint: delegate to agents in worktrees (enforced by hook)
+7.5. **QA** — Product-type-aware testing with structured journey input, memplex error resolution
+8. **Validation** — Artifact-based gates, then 12-step pipeline: traceability, build, security, closure, code review, conditional, hardening, compliance
+9. **Completion** — Memplex knowledge persistence, skill evolution, git commit, PR, task summary
 
 ### Execution Routes (3)
 | Route | Flag | Agents | Use Case |
@@ -179,4 +181,5 @@ start-task-sentinel.mjs
 - Skill performance tracking — deferred until multi-agent is default
 - Session guardian Phase 2 — trigger-based haiku analysis agent between wave dispatches. Design in `prd-session-guardian.md`.
 - Session guardian Phase 3 — full background agent (KAIROS-style). Deferred until runtime support ships.
+- /plan merge into /tp — Research, product context, journeys, intent file, architect guardrails absorbed into /tp design phase. Design in `design-plan-merge.md`.
 - Issue relations/dependencies — deferred, partially covered by prd-state.json

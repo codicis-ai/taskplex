@@ -146,13 +146,26 @@ Convention bootstrap (Phase -0.5) is deferred — runs in background, presents a
 - Both modes: Automated scan + memplex convention lookup (if available)
 - Full mode adds: 2-4 targeted questions
 
-**Sub-phase B — Intent Exploration (Adaptive Interaction Model v2)**:
+**Sub-phase B — Research & Discovery** (designed, not yet built — see `design-plan-merge.md`):
+- Blueprint + Standard-conditional: Read references, investigate problem space, scan codebase, present research summary
+- Light: Skipped
+
+**Sub-phase C — Product Context** (designed, not yet built — see `design-plan-merge.md`):
+- Blueprint only: User profiles, core journeys (DOES/SEES/FEELS tables), jobs to be done, feature assessment (Kill/Fix/Keep/Build/Defer), contract + scope
+- Produces `product/brief.md` (project-level, persists across tasks)
+- Standard + Light: Skipped (Standard gets lightweight journeys in Sub-phase D)
+
+**Sub-phase D — Intent Exploration (Adaptive Interaction Model v2)**:
 
 Context gathered from **4 sources** before asking anything:
 1. **Invocation context** — task description, flags, referenced files
 2. **Project documentation** — INTENT.md, CLAUDE.md, product/brief.md
 3. **Quick codebase scan** — 3-5 Grep/Glob calls
 4. **Memplex knowledge** (if available) — past decisions, rejected approaches, corrections
+
+Enriched with (designed, not yet built):
+- **Intent file**: `.claude-task/{taskId}/intent.md` — confirmed problem, goal, scope, user decisions as architect guardrails
+- **Journey integration**: Blueprint uses journey tables from Sub-phase C. Standard generates lightweight inline tables.
 
 **Gate criteria** (flags, not counters):
 | Mode | Required |
