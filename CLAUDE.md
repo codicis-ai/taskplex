@@ -142,6 +142,7 @@ start-task-sentinel.mjs
 | `prd-workflow-enforcement.md` | PRD: Hook gates for critic completion + user acknowledgment + continuity reminder. Layer 1 (structural). Ready to build. |
 | `prd-session-guardian.md` | PRD: Session guardian phases 1-3 (heartbeat checks → hybrid triggers → background agent). Layer 2 (behavioral). Build after Layer 1. |
 | `design-plan-merge.md` | Design: Merge /plan's rich phases (research, product context, journeys, intent file, guardrails) into /tp. Eliminates the quality gap between running /plan+/tp vs /tp alone. |
+| `prd-claude-code-plugin.md` | PRD: Package TaskPlex as Claude Code plugin. One-command install, marketplace distribution, versioned updates. Foundation for multi-runtime distribution. |
 
 ## What's Built vs What's Designed
 
