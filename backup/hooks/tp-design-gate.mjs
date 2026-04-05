@@ -69,8 +69,10 @@ async function main() {
 
     const phase = manifest.phase || 'init';
 
-    // === Implementation + QA gates ===
-    // Gate ordering: Acknowledgment → Critic → Implementation delegated → Wave
+    // === Implementation + QA gates (ARTIFACT-BASED — do not trust manifest flags) ===
+    // Gate ordering: Spec exists → Critic artifacts exist → Implementation delegated → Wave
+    // Design principle: check what FILES exist on disk, not what the manifest CLAIMS happened.
+    // The agent can set any flag — it cannot fake file existence without producing content.
     if (phase === 'implementation' || phase === 'qa') {
       const execMode = manifest.executionMode || 'standard';
       const toolInput = hookInput.tool_input || {};
@@ -80,54 +82,87 @@ async function main() {
       // Allow writes to task artifacts (.claude-task/) — only block source code edits
       if (filePath && !normalizedPath.includes('.claude-task/') && isSourceFile(filePath)) {
 
-        // --- Acknowledgment gate (all routes) ---
-        if (!manifest.planSource?.userAcknowledged) {
-          denyTool(
-            `TaskPlex acknowledgment gate: User has not acknowledged the plan.\n` +
-            `Run Pre-Implementation Acknowledgment (Phase A.3) before proceeding.\n` +
-            `Use AskUserQuestion to present the plan summary and get approval.\n` +
-            `Then set manifest.planSource.userAcknowledged = true.\n\n` +
-            `Escape: manually set planSource.userAcknowledged to true in manifest.json.`
-          );
-          return;
+        // --- Spec gate (all routes): spec.md must exist before implementation ---
+        // A PRD is input, not a spec. The planning phase must produce spec.md.
+        // Light route: brief.md is sufficient (no spec required).
+        if (execMode !== 'light') {
+          const specPath = path.join(taskPath, 'spec.md');
+          const hasSpec = fs.existsSync(specPath);
+          if (!hasSpec) {
+            denyTool(
+              `TaskPlex spec gate: No spec.md found in .claude-task/{taskId}/.\n` +
+              `The planning phase must produce a spec before implementation can begin.\n` +
+              `A PRD or plan file is requirements INPUT — it is not a spec.\n` +
+              `Run the planning agent to write spec.md from your brief.\n` +
+              `See planning.md Phase A (Standard) or Phase B (Blueprint).\n\n` +
+              `Escape: create a minimal spec.md in the task directory.`
+            );
+            return;
+          }
+        } else {
+          // Light route: at minimum brief.md must exist
+          const briefPath = path.join(taskPath, 'brief.md');
+          if (!fs.existsSync(briefPath)) {
+            denyTool(
+              `TaskPlex brief gate: No brief.md found in .claude-task/{taskId}/.\n` +
+              `Even Light route requires a brief before implementation.\n` +
+              `Run the design phase to produce brief.md.\n\n` +
+              `Escape: create a minimal brief.md in the task directory.`
+            );
+            return;
+          }
         }
 
-        // --- Critic gate (standard/team/blueprint only, light exempt) ---
+        // --- Critic gate (ARTIFACT-BASED — ignore manifest.criticCompleted flag) ---
+        // Standard/team/blueprint: review artifacts must exist in reviews/ directory.
+        // Light route: exempt (no critic step).
         if (execMode === 'standard' || execMode === 'team' || execMode === 'blueprint') {
-          let criticDone = manifest.criticCompleted === true;
-
-          // Artifact-based fallback: detect review files if flag not set
-          if (!criticDone) {
-            try {
-              const reviewsDir = path.join(taskPath, 'reviews');
-              if (fs.existsSync(reviewsDir)) {
-                const reviewFiles = fs.readdirSync(reviewsDir);
-                if (execMode === 'blueprint') {
-                  criticDone = reviewFiles.some(f => f.startsWith('strategic-review') || f.startsWith('tactical-review'));
-                } else {
-                  criticDone = reviewFiles.some(f => f.startsWith('spec-review') || f.startsWith('spec-critic'));
-                }
-                // Auto-set the flag so we don't re-scan every time
-                if (criticDone) {
-                  manifest.criticCompleted = true;
-                  const manifestPath = path.join(taskPath, 'manifest.json');
-                  try { fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2)); } catch { /* non-fatal */ }
-                }
+          let hasCriticReview = false;
+          try {
+            const reviewsDir = path.join(taskPath, 'reviews');
+            if (fs.existsSync(reviewsDir)) {
+              const reviewFiles = fs.readdirSync(reviewsDir);
+              if (execMode === 'blueprint') {
+                // Blueprint requires strategic or tactical review
+                hasCriticReview = reviewFiles.some(f =>
+                  f.startsWith('strategic-review') || f.startsWith('tactical-review'));
+              } else {
+                // Standard/team requires spec critic review
+                hasCriticReview = reviewFiles.some(f =>
+                  f.startsWith('spec-review') || f.startsWith('spec-critic') || f.startsWith('closure'));
               }
-            } catch { /* non-fatal, treat as not done */ }
-          }
+            }
+          } catch { /* treat as not done */ }
 
-          if (!criticDone) {
+          if (!hasCriticReview) {
             const criticMsg = execMode === 'blueprint'
-              ? `TaskPlex critic gate: Strategic and tactical critic reviews not completed.\n` +
-                `Spawn strategic-critic and tactical-critic before implementation.\n` +
+              ? `TaskPlex critic gate: No critic review artifacts found in reviews/.\n` +
+                `Blueprint route requires strategic-critic and/or tactical-critic reviews.\n` +
+                `Spawn critics and ensure they write to .claude-task/{taskId}/reviews/.\n` +
                 `See planning.md Blueprint Phase A.2.`
-              : `TaskPlex critic gate: Spec critic review not completed.\n` +
-                `Spawn closure-agent for spec review before implementation.\n` +
+              : `TaskPlex critic gate: No critic review artifacts found in reviews/.\n` +
+                `Standard route requires spec critic review.\n` +
+                `Spawn closure-agent for spec review — it must write to .claude-task/{taskId}/reviews/.\n` +
                 `See planning.md Standard Phase A.2.`;
             denyTool(
-              criticMsg + `\n\nAfter critics return APPROVED, set manifest.criticCompleted = true.\n` +
-              `Escape: manually set criticCompleted to true in manifest.json.`
+              criticMsg + `\n\nThe gate checks for ACTUAL review files, not manifest flags.\n` +
+              `Escape: create a review file in .claude-task/{taskId}/reviews/.`
+            );
+            return;
+          }
+        }
+
+        // --- Blueprint artifact gate: architecture.md + file-ownership.json ---
+        if (execMode === 'blueprint') {
+          const missing = [];
+          if (!fs.existsSync(path.join(taskPath, 'architecture.md'))) missing.push('architecture.md');
+          if (!fs.existsSync(path.join(taskPath, 'file-ownership.json'))) missing.push('file-ownership.json');
+          if (missing.length > 0) {
+            denyTool(
+              `TaskPlex blueprint artifact gate: Missing required artifacts: ${missing.join(', ')}.\n` +
+              `Blueprint route requires architecture.md (from architect agent) and\n` +
+              `file-ownership.json (from planning agent) before implementation.\n\n` +
+              `Escape: create the missing files in .claude-task/{taskId}/.`
             );
             return;
           }
@@ -140,7 +175,7 @@ async function main() {
               `TaskPlex implementation gate: Source file edits blocked.\n` +
               `Execution mode: ${execMode} — the orchestrator must delegate to agents, not implement directly.\n` +
               `Spawn implementation agents per ~/.claude/taskplex/phases/planning.md.\n` +
-              `Use isolation: "worktree" for each agent.\n` +
+              `Create TaskPlex-managed worktrees (git worktree add) for Blueprint agents.\n` +
               `After spawning, set manifest.implementationDelegated = true to unlock orchestrator edits.\n\n` +
               `If this is a post-agent fix (build-fixer, review fix), set manifest.implementationDelegated = true first.`
             );

@@ -27,51 +27,50 @@ From `apple-notes/.claude-task/event-engine-v1/manifest.json`:
 - `phaseChecklist.planning.critic-review: "pending"` — critic never ran
 - `reviews/` directory empty — no review artifacts produced
 
-## Solution
+## Solution (REVISED — artifact-based, not flag-based)
 
-### Acknowledgment Gate (blocks first)
+**Design principle**: Check what FILES exist on disk, not what the manifest CLAIMS happened. In the memplex session (TASK-20260405-realtime-knowledge), the agent set `criticCompleted: true`, `userAcknowledged: true`, and `implementationDelegated: true` without running critics, asking the user, or spawning agents. Flag-based gates are useless against an agent that pre-sets flags.
+
+### Spec Gate (blocks first)
 
 **Trigger**: Any source file write during `phase === "implementation"` or `phase === "qa"`.
 
-**Check**: `manifest.planSource?.userAcknowledged === true`
+**Check**: `spec.md` exists in `.claude-task/{taskId}/`. For Light route: `brief.md` must exist instead.
 
-**Block message**: "TaskPlex acknowledgment gate: User has not acknowledged the plan. Run Pre-Implementation Acknowledgment (Phase A.3) before proceeding. Use AskUserQuestion to present the plan summary and get approval."
-
-**No manifest schema change needed** — `planSource.userAcknowledged` already exists.
+**Why**: A PRD is requirements input, not a spec. The planning phase must produce spec.md. This catches the entire "skip planning" failure class — you cannot implement without a spec.
 
 **Route behavior**:
-- **Light**: Subject to this gate. Light route has a Pre-Implementation Acknowledgment step (Phase A.3 in planning.md). The spec is shorter but user approval is still required.
-- **Standard**: Subject to this gate.
-- **Blueprint**: Subject to this gate.
+- **Light**: Requires `brief.md` only (no planning agent in Light route)
+- **Standard / Team**: Requires `spec.md`
+- **Blueprint**: Requires `spec.md`
 
-**Location**: `tp-design-gate.mjs`, inside the implementation/QA block, nested within the `isSourceFile()` conditional. Runs FIRST before all other implementation gates.
+**Escape hatch**: Create a minimal spec.md in the task directory.
 
-### Critic Gate (blocks second)
+### Critic Gate (blocks second, ARTIFACT-BASED)
 
 **Trigger**: Any source file write during `phase === "implementation"` or `phase === "qa"`, when `executionMode` is `standard`, `team`, or `blueprint`.
 
-**Check**: `manifest.criticCompleted === true`
+**Check**: Review artifact files EXIST in `.claude-task/{taskId}/reviews/`. Does NOT check `manifest.criticCompleted` — flags are unreliable.
 
-**Block message per route**:
-- **Blueprint**: "TaskPlex critic gate: Strategic and tactical critic reviews not completed. Spawn strategic-critic and tactical-critic before implementation. See planning.md Blueprint Phase A.2."
-- **Standard / Team**: "TaskPlex critic gate: Spec critic review not completed. Spawn closure-agent for spec review before implementation. See planning.md Standard Phase A.2."
+**Artifact detection per route**:
+- **Blueprint**: Files matching `strategic-review*` or `tactical-review*`
+- **Standard / Team**: Files matching `spec-review*`, `spec-critic*`, or `closure*`
 
-**Light route**: Exempt. Light route has no critic step.
+**Light route**: Exempt. No critic step.
 
-**Manifest schema addition**:
-```json
-{
-  "criticCompleted": false
-}
-```
+**Note**: `manifest.criticCompleted` remains as an informational field for progress tracking. The gate ignores it entirely.
 
-**Set by**: Orchestrator, after critics return APPROVED. But since orchestrator prompt compliance is the very problem this PRD addresses, the hook also detects critic completion from review artifacts:
+**Escape hatch**: Create a review file in `.claude-task/{taskId}/reviews/`.
 
-**Artifact-based detection (fallback)**: If `criticCompleted` is not set but review files exist in `.claude-task/{taskId}/reviews/` matching `strategic-review*` or `tactical-review*` (Blueprint) or `spec-review*` (Standard), the hook treats the critic as completed and sets `manifest.criticCompleted = true` itself. This prevents deadlock when the orchestrator forgets to set the flag.
+### Blueprint Artifact Gate (blocks third, Blueprint only)
 
-**Escape hatch**: If the user needs to bypass the critic gate (e.g., re-running after a failed session), they can manually set `criticCompleted: true` in manifest.json. The block message includes this instruction.
+**Trigger**: Source file write when `executionMode === "blueprint"`.
 
-**Location**: `tp-design-gate.mjs`, inside the implementation/QA block, nested within `isSourceFile()`, runs AFTER acknowledgment gate.
+**Check**: `architecture.md` AND `file-ownership.json` must exist in `.claude-task/{taskId}/`.
+
+**Why**: Without architecture and file ownership, there's no basis for multi-agent parallel execution.
+
+**Escape hatch**: Create the missing files in the task directory.
 
 ### Execution Continuity Reminder (advisory, not a gate)
 
@@ -92,61 +91,65 @@ From `apple-notes/.claude-task/event-engine-v1/manifest.json`:
 During `phase === "implementation"` or `phase === "qa"`, inside the `isSourceFile()` conditional:
 
 ```
-1. Acknowledgment gate — blocks if planSource.userAcknowledged !== true
-2. Critic gate — blocks if (standard|team|blueprint) and criticCompleted !== true
-   (with artifact-based fallback detection)
-3. Implementation delegated (existing) — blocks orchestrator source edits
-4. Wave gate (existing) — blocks next wave until previous validated
+1. Spec gate — blocks if spec.md missing (Standard/Team/Blueprint) or brief.md missing (Light)
+2. Critic gate — blocks if no review artifacts in reviews/ (Standard/Team/Blueprint; Light exempt)
+3. Blueprint artifact gate — blocks if architecture.md or file-ownership.json missing (Blueprint only)
+4. Implementation delegated (existing) — blocks orchestrator source edits
+5. Wave gate (existing) — blocks next wave until previous validated
 ```
 
-During `phase === "validation"`: No new gates. Validation runs after implementation is complete — acknowledgment and critic are already past. Existing gates do not apply to validation phase.
+All gates are artifact-based (check file existence), except Implementation delegated and Wave gate which remain flag-based (these are set AFTER agents are spawned, so the timing is correct).
+
+During `phase === "validation"`: No new gates.
 
 ## What This Does NOT Fix
 
-- **Agent stopping to ask during implementation** — The continuity reminder is advisory only. A full fix requires the Session Guardian (`prd-session-guardian.md`) which can detect conversational patterns.
-- **Agent dispatching workers in wrong order** — The wave gate partially covers this, but only after workers start writing files. Pre-dispatch ordering is behavioral.
-- **Agent ignoring task list items** — Task lists remain informational. Gates are the structural enforcement layer.
-- **Scope creep during implementation** — Addressed by Session Guardian Phase 1 (scope checks in heartbeat).
+- **Agent stopping to ask during implementation** — The continuity reminder is advisory only. A full fix requires the Session Guardian (`prd-session-guardian.md`).
+- **Agent dispatching workers in wrong order** — The wave gate partially covers this post-write.
+- **Agent ignoring task list items** — Task lists remain informational.
+- **Scope creep during implementation** — Addressed by Session Guardian Phase 1.
+- **Agent pre-setting `implementationDelegated: true` without spawning agents** — This flag is still trusted. Mitigated by the fact that spec + critic + blueprint artifact gates run first, so the agent must at least produce all planning artifacts before reaching this gate.
 
 ## Acceptance Criteria
 
-- AC-1: Blueprint route blocks source file writes if `criticCompleted !== true`, with Blueprint-specific error message mentioning strategic + tactical critics
-- AC-2: Standard route blocks source file writes if `criticCompleted !== true`, with Standard-specific error message mentioning spec critic
-- AC-3: Light route is NOT blocked by critic gate (no `criticCompleted` field needed)
-- AC-4: All routes (including Light) block source file writes if `planSource.userAcknowledged !== true`, with clear error message
-- AC-5: Heartbeat renders execution continuity reminder in progress.md during implementation/QA phases
-- AC-6: Existing implementation gate and wave gate continue to work (no regression)
-- AC-7: Task artifact writes (`.claude-task/` paths) are NOT blocked by new gates
-- AC-8: Critic gate detects review artifacts as fallback when `criticCompleted` flag is not set
-- AC-9: `criticCompleted` field absent or `undefined` is treated as `false`
-- AC-10: Block messages include instructions for manual escape (edit manifest.json)
+- AC-1: Standard/Team/Blueprint blocks source writes if `spec.md` does not exist
+- AC-2: Light blocks source writes if `brief.md` does not exist
+- AC-3: Blueprint blocks source writes if `reviews/` has no critic artifacts (checks file names, ignores manifest flags)
+- AC-4: Standard/Team blocks source writes if `reviews/` has no spec-review/closure artifacts
+- AC-5: Light is NOT blocked by critic gate
+- AC-6: Blueprint blocks source writes if `architecture.md` or `file-ownership.json` missing
+- AC-7: Heartbeat renders execution continuity reminder in progress.md during implementation/QA
+- AC-8: Existing implementation delegated gate and wave gate continue to work (no regression)
+- AC-9: Task artifact writes (`.claude-task/` paths) NOT blocked by any gate
+- AC-10: Block messages include escape instructions (create the missing file)
+- AC-11: Agent pre-setting `criticCompleted: true` in manifest does NOT bypass the critic gate (gate ignores the flag)
 
 ## Test Plan
 
 | # | Test | Input | Expected |
 |---|------|-------|----------|
-| 1 | Blueprint, no critic, no artifacts | Source write, `criticCompleted: false`, no review files | Blocked with Blueprint critic message |
-| 2 | Blueprint, critic done via flag | Source write, `criticCompleted: true` | Allowed (passes to next gate) |
-| 3 | Blueprint, critic done via artifacts | Source write, `criticCompleted` absent, `reviews/strategic-review.md` exists | Allowed (artifact detection sets flag) |
-| 4 | Standard, no critic | Source write, `criticCompleted: false` | Blocked with Standard critic message (mentions spec critic) |
-| 5 | Standard, `criticCompleted` absent | Source write, no field in manifest | Blocked (undefined treated as false) |
-| 6 | Team route, no critic | Source write, `executionMode: "team"`, `criticCompleted: false` | Blocked (team follows standard critic rules) |
-| 7 | Light, no critic | Source write, `executionMode: "light"`, no `criticCompleted` | Allowed (light exempt) |
-| 8 | Any route, not acknowledged | Source write, `userAcknowledged: false` | Blocked with acknowledgment message |
-| 9 | Any route, acknowledged | Source write, `userAcknowledged: true` | Allowed (passes to next gate) |
-| 10 | Light route, not acknowledged | Source write, `executionMode: "light"`, `userAcknowledged: false` | Blocked (light still requires acknowledgment) |
-| 11 | Task artifact write, not acknowledged | Write to `.claude-task/spec.md`, `userAcknowledged: false` | Allowed (task artifacts bypass gates) |
-| 12 | Non-source file write | Write to `README.md`, not acknowledged | Allowed (`isSourceFile` returns false) |
-| 13 | Heartbeat during impl | File edit, `phase: "implementation"` | progress.md contains continuity reminder |
-| 14 | Heartbeat during design | File edit, `phase: "init"` | No continuity reminder in progress.md |
-| 15 | Heartbeat during validation | File edit, `phase: "validation"` | No continuity reminder |
-| 16 | Resumed session, flag persisted | Source write, manifest from previous session with `userAcknowledged: true` | Allowed (flag persisted in manifest.json) |
+| 1 | No spec, Standard | Source write, no `spec.md` in task dir | Blocked: "No spec.md found" |
+| 2 | Has spec, Standard | Source write, `spec.md` exists | Passes spec gate (continues to critic gate) |
+| 3 | No brief, Light | Source write, `executionMode: "light"`, no `brief.md` | Blocked: "No brief.md found" |
+| 4 | Has brief, Light | Source write, Light, `brief.md` exists | Passes (Light exempt from critic/blueprint gates) |
+| 5 | No critic artifacts, Blueprint | Source write, Blueprint, no `reviews/` dir | Blocked: "No critic review artifacts" |
+| 6 | Has critic artifacts, Blueprint | `reviews/strategic-review.md` exists | Passes critic gate |
+| 7 | Flag set but no artifacts | `criticCompleted: true` in manifest, no review files | Blocked (gate ignores flag) |
+| 8 | No critic artifacts, Standard | Source write, Standard, empty `reviews/` | Blocked: mentions spec critic |
+| 9 | Has critic artifacts, Standard | `reviews/spec-review.md` or `reviews/closure.md` exists | Passes |
+| 10 | Missing architecture, Blueprint | Has spec + reviews, no `architecture.md` | Blocked: "Missing architecture.md" |
+| 11 | Missing file-ownership, Blueprint | Has spec + reviews + architecture, no `file-ownership.json` | Blocked: "Missing file-ownership.json" |
+| 12 | All artifacts present, Blueprint | spec + reviews + architecture + file-ownership | Passes all gates (continues to impl delegated) |
+| 13 | Task artifact write, no spec | Write to `.claude-task/spec.md` | Allowed (task artifacts bypass) |
+| 14 | Non-source file write | Write `README.md`, no spec | Allowed (`isSourceFile` returns false) |
+| 15 | Heartbeat during impl | File edit, `phase: "implementation"` | progress.md contains continuity reminder |
+| 16 | Heartbeat during design | File edit, `phase: "init"` | No continuity reminder |
+| 17 | PRD as plan source, no spec | `planSource.origin: "external-file"`, no spec.md | Blocked (PRD is input, not a spec) |
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `~/.claude/hooks/tp-design-gate.mjs` | Add acknowledgment gate + critic gate (with artifact fallback) inside `isSourceFile()` block |
-| `~/.claude/hooks/tp-heartbeat.mjs` | Add continuity reminder to `renderProgress()` during implementation/QA |
-| `~/.claude/taskplex/manifest-schema.json` | Document `criticCompleted` field |
-| `~/.claude/taskplex/phases/planning.md` | Add instruction to set `criticCompleted = true` after critics return (all routes) |
+| `~/.claude/hooks/tp-design-gate.mjs` | Spec gate + artifact-based critic gate + blueprint artifact gate inside `isSourceFile()` block |
+| `~/.claude/hooks/tp-heartbeat.mjs` | Continuity reminder in `renderProgress()` during implementation/QA |
+| `~/.claude/taskplex/phases/planning.md` | `criticCompleted` instruction retained as informational (gate does not read it) |
