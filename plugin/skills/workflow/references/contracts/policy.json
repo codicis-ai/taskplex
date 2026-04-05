@@ -1,0 +1,76 @@
+{
+  "version": "2.0.0",
+  "qualityProfiles": {
+    "lean": {
+      "requiredGates": [],
+      "optionalGates": ["tests", "lint"],
+      "skipHardening": true,
+      "autoCommit": true
+    },
+    "standard": {
+      "requiredGates": ["tests", "lint", "security", "closure", "codeReview", "compliance"],
+      "optionalGates": ["typeCheck", "database", "e2e", "userWorkflow"],
+      "skipHardening": false,
+      "autoCommit": false
+    },
+    "enterprise": {
+      "requiredGates": ["tests", "lint", "typeCheck", "security", "closure", "codeReview", "compliance", "hardening", "readiness"],
+      "optionalGates": ["database", "e2e", "userWorkflow", "dependencyCompliance", "migrationSafety", "operability"],
+      "skipHardening": false,
+      "autoCommit": false,
+      "requireReview": true
+    }
+  },
+  "limits": {
+    "buildFixRounds": 3,
+    "reviewResubmissions": 3,
+    "validationPipelineRuns": 3,
+    "prdFeatureAttemptsAutonomous": 2
+  },
+  "executionModes": {
+    "light": {
+      "maxFiles": 20,
+      "maxTurns": 25,
+      "agents": ["implementation-agent", "build-fixer"],
+      "validationAgents": ["closure-agent", "compliance-agent"]
+    },
+    "standard": {
+      "maxFiles": null,
+      "maxTurns": 25,
+      "agents": ["planning-agent", "closure-agent", "implementation-agent", "tactical-critic", "build-fixer"],
+      "validationAgents": ["security-reviewer", "closure-agent", "code-reviewer", "hardening-reviewer", "compliance-agent"]
+    },
+    "blueprint": {
+      "maxFiles": null,
+      "maxTurns": 30,
+      "agents": ["architect", "researcher", "implementation-agent", "merge-resolver", "build-fixer"],
+      "validationAgents": ["security-reviewer", "closure-agent", "code-reviewer", "hardening-reviewer", "compliance-agent"],
+      "initiativeAgents": ["prd-bootstrap", "strategic-critic", "tactical-critic"]
+    }
+  },
+  "legacyModeMapping": {
+    "single": "standard",
+    "parallel": "standard",
+    "team": "standard",
+    "architect": "blueprint",
+    "prd": "blueprint"
+  },
+  "designDepth": {
+    "light": {
+      "maxConventionQuestions": 0,
+      "maxIntentQuestions": 2,
+      "brainstormApproaches": false
+    },
+    "full": {
+      "maxConventionQuestions": 4,
+      "maxIntentQuestions": null,
+      "brainstormApproaches": true
+    }
+  },
+  "hardening": {
+    "minReadinessScore": {
+      "standard": 50,
+      "enterprise": 70
+    }
+  }
+}

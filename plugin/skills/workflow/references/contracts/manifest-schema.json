@@ -1,0 +1,668 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TaskPlex Manifest v2",
+  "description": "Schema for .claude-task/manifest.json — the task state file",
+  "type": "object",
+  "required": ["taskId", "description", "phase", "designDepth", "executionMode", "qualityProfile"],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "default": 2,
+      "description": "Manifest schema version"
+    },
+    "taskId": {
+      "type": "string",
+      "pattern": "^TASK-[a-z0-9-]+$",
+      "description": "Unique task identifier"
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable task description"
+    },
+    "phase": {
+      "type": "string",
+      "enum": ["bootstrap", "init", "brief", "planning", "implementation", "qa", "validation"],
+      "description": "Current task phase (v2: hardening and completion merged into validation. QA runs between implementation and validation.)"
+    },
+    "designPhase": {
+      "type": "string",
+      "enum": [
+        "convention-scan",
+        "convention-check",
+        "intent-exploration",
+        "approach-review",
+        "design-approval",
+        "brief-writing",
+        "prd-bootstrap",
+        "prd-critic",
+        "prd-approval",
+        "planning-active"
+      ],
+      "default": "convention-scan",
+      "description": "Sub-phase within the design flow (init/brief). Controls which artifacts can be written. Must be advanced explicitly after completing each interaction step with the user."
+    },
+    "designInteraction": {
+      "type": "object",
+      "description": "Evidence of user interaction during design phase. The tp-design-gate hook checks flag fields (contextConfirmed, ambiguitiesResolved, approachSelected) to enforce interaction requirements. Counter fields are kept for observability but are NOT gate criteria.",
+      "properties": {
+        "contextConfirmed": {
+          "type": "boolean",
+          "default": false,
+          "description": "User confirmed the orchestrator's synthesis of context (invocation + docs + scan). Gate criterion for all modes."
+        },
+        "ambiguitiesResolved": {
+          "type": "boolean",
+          "default": false,
+          "description": "All ambiguities resolved through adaptive questioning — no open gaps remain. Gate criterion for full mode."
+        },
+        "contextSources": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Sources used for context gathering (e.g., 'task-description', 'INTENT.md', 'CLAUDE.md', 'codebase-scan', 'product/brief.md')"
+        },
+        "contextDensity": {
+          "type": "string",
+          "enum": ["high", "medium", "low"],
+          "description": "Assessed context density — drives how many questions are needed. High = less ceremony, Low = more questions."
+        },
+        "conventionQuestionsAsked": {
+          "type": "integer",
+          "default": 0,
+          "description": "Number of convention questions asked during Sub-phase A (observability counter, not a gate criterion)"
+        },
+        "conventionQuestionsAnswered": {
+          "type": "integer",
+          "default": 0,
+          "description": "Number of convention questions the user answered (observability counter)"
+        },
+        "intentQuestionsAsked": {
+          "type": "integer",
+          "default": 0,
+          "description": "Number of clarifying questions asked during Sub-phase B (observability counter, not a gate criterion)"
+        },
+        "intentQuestionsAnswered": {
+          "type": "integer",
+          "default": 0,
+          "description": "Number of intent questions the user answered (observability counter)"
+        },
+        "approachesProposed": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether 2-3 approaches were proposed to the user (full mode requires true)"
+        },
+        "approachSelected": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether the user selected an approach. Gate criterion for full mode."
+        },
+        "sectionsPresented": {
+          "type": "integer",
+          "default": 0,
+          "description": "Number of design sections presented for approval (full mode requires >= 1)"
+        },
+        "sectionsApproved": {
+          "type": "integer",
+          "default": 0,
+          "description": "Number of design sections the user approved. Gate criterion for full mode (>= 1)."
+        },
+        "userEscaped": {
+          "type": "boolean",
+          "default": false,
+          "description": "User triggered mid-flow escape ('just do it') — bypasses remaining interaction requirements"
+        },
+        "prdBriefConfirmed": {
+          "type": "boolean",
+          "default": false,
+          "description": "PRD mode: user confirmed the product brief"
+        },
+        "prdUserReviewed": {
+          "type": "boolean",
+          "default": false,
+          "description": "PRD mode: user reviewed and approved the PRD (Phase 2b)"
+        },
+        "prdExecutionModeChosen": {
+          "type": "boolean",
+          "default": false,
+          "description": "PRD mode: user chose execution mode (Phase 2c)"
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["in-progress", "completed", "blocked", "cancelled"],
+      "description": "Overall task status"
+    },
+    "designDepth": {
+      "type": "string",
+      "enum": ["light", "full"],
+      "default": "full",
+      "description": "Design ceremony level (user-controlled via --light/--full flags)"
+    },
+    "executionMode": {
+      "type": "string",
+      "enum": ["light", "standard", "blueprint"],
+      "description": "Execution route. light=minimal+single agent, standard=full design+multi-agent+critic (default), blueprint=architect+critics+waves. Legacy values (single, parallel, team, architect, prd) are mapped on read: single→standard, parallel→standard, team→standard, architect→blueprint, prd→blueprint."
+    },
+    "initiativeMode": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, Blueprint route activates initiative-scale capabilities: feature decomposition, wave execution, cross-feature closure. Triggered by --prd flag."
+    },
+    "qualityProfile": {
+      "type": "string",
+      "enum": ["lean", "standard", "enterprise"],
+      "default": "standard",
+      "description": "Quality gate profile"
+    },
+    "conventionContext": {
+      "type": "object",
+      "description": "Task-scoped convention context from Sub-phase A",
+      "properties": {
+        "inferred": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Auto-inferred conventions"
+        },
+        "confirmed": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "User-confirmed conventions"
+        }
+      }
+    },
+    "modifiedFiles": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Files modified during this task"
+    },
+    "progressNotes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["done", "active", "pending", "issue"]
+          },
+          "timestamp": { "type": "string", "format": "date-time" }
+        }
+      },
+      "description": "Progress log entries — heartbeat renders progress.md from this"
+    },
+    "degradations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["skip", "fallback", "deadlock", "override"]
+          },
+          "phase": { "type": "string" },
+          "reason": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        }
+      },
+      "description": "Quality deviations logged throughout task lifecycle (v2: moved from degradations.json into manifest)"
+    },
+    "overrides": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "phase": { "type": "string" },
+          "critic": { "type": "string" },
+          "verdict": { "type": "string" },
+          "reason": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        }
+      },
+      "description": "User overrides of critic/reviewer verdicts"
+    },
+    "validation": {
+      "type": "object",
+      "properties": {
+        "typecheck": { "type": "string", "enum": ["pending", "passed", "failed", "skipped"] },
+        "lint": { "type": "string", "enum": ["pending", "passed", "failed", "skipped"] },
+        "tests": { "type": "string", "enum": ["pending", "passed", "failed", "skipped"] },
+        "conventionCompliance": { "type": "string" },
+        "security": { "type": "string" },
+        "closure": { "type": "string" },
+        "codeReview": { "type": "string" },
+        "hardening": { "type": "string" },
+        "compliance": { "type": "string" },
+        "traceability": { "type": "string" },
+        "readiness": { "type": "string" },
+        "customGates": { "type": "string" }
+      },
+      "description": "Validation gate results"
+    },
+    "intentTraceability": {
+      "type": ["object", "null"],
+      "default": null,
+      "description": "Maps acceptance criteria to architecture/spec sections. Built at Phase A.3 (Standard) or Step 3a (Blueprint). Ensures every AC has a home in the plan before implementation starts.",
+      "properties": {
+        "mappings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "ac": { "type": "string", "description": "Acceptance criterion ID and description" },
+              "section": { "type": ["string", "null"], "description": "Wave/component/section that addresses this AC" },
+              "mapped": { "type": "boolean" }
+            }
+          }
+        },
+        "coverage": {
+          "type": "object",
+          "properties": {
+            "mapped": { "type": "integer" },
+            "unmapped": { "type": "integer" },
+            "total": { "type": "integer" },
+            "percentage": { "type": "number" }
+          }
+        }
+      }
+    },
+    "goalTraceability": {
+      "type": ["object", "null"],
+      "default": null,
+      "description": "Maps task acceptance criteria to INTENT.md success criteria. Null if no INTENT.md exists. Created during brief writing (Step 7b), verified by closure agent.",
+      "properties": {
+        "intentFile": { "type": "string", "description": "Path to INTENT.md" },
+        "mappings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "ac": { "type": "string", "description": "Acceptance criterion from brief.md" },
+              "intentCriteria": { "type": ["string", "null"], "description": "Matching criterion from INTENT.md, or null if no mapping" },
+              "intentSection": { "type": ["string", "null"], "description": "Section in INTENT.md (Success Criteria, Quality Priorities, etc.)" },
+              "note": { "type": "string", "description": "Why no mapping exists (for unmapped ACs)" }
+            }
+          }
+        },
+        "coverage": {
+          "type": "object",
+          "properties": {
+            "mapped": { "type": "integer" },
+            "unmapped": { "type": "integer" },
+            "total": { "type": "integer" }
+          }
+        }
+      }
+    },
+    "buildCommands": {
+      "type": "object",
+      "properties": {
+        "typecheck": { "type": "string" },
+        "lint": { "type": "string" },
+        "test": { "type": "string" },
+        "format": { "type": ["string", "null"] },
+        "custom": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "command": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "skillEvolution": {
+      "type": ["object", "null"],
+      "default": null,
+      "description": "Evolution generated from this task's signals. Created at completion if failure/correction signals exceed threshold.",
+      "properties": {
+        "skill": { "type": "string", "description": "Skill name that evolved" },
+        "evolutionId": { "type": "string", "description": "Evolution entry ID (evo-YYYYMMDD-NNN)" },
+        "type": { "type": "string", "enum": ["troubleshooting", "example"] },
+        "title": { "type": "string" },
+        "signal": { "type": "string", "description": "What triggered the evolution" }
+      }
+    },
+    "planFile": { "type": ["string", "null"] },
+    "planSource": {
+      "type": "object",
+      "properties": {
+        "origin": { "type": "string" },
+        "filePath": { "type": ["string", "null"] },
+        "lifecycleValidated": { "type": "boolean" },
+        "userAcknowledged": { "type": "boolean" },
+        "acknowledgmentChoice": { "type": ["string", "null"] }
+      }
+    },
+    "implementationDelegated": {
+      "type": "boolean",
+      "default": false,
+      "description": "Set to true after the orchestrator spawns implementation agents. The implementation gate blocks orchestrator source edits until this is true. For light mode, this is auto-set to true. For standard/blueprint (multi-agent), the orchestrator must set it after dispatching agents."
+    },
+    "implementationAgents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "agentId": { "type": "string" },
+          "status": { "type": "string" },
+          "section": { "type": "string" },
+          "startedAt": { "type": "string" },
+          "completedAt": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "git": {
+      "type": "object",
+      "properties": {
+        "available": { "type": "boolean" },
+        "branch": { "type": ["string", "null"] },
+        "baseBranch": { "type": ["string", "null"] },
+        "commits": { "type": "array", "items": { "type": "string" } },
+        "prUrl": { "type": ["string", "null"] },
+        "prNumber": { "type": ["integer", "null"] },
+        "pushConfirmed": { "type": "boolean" },
+        "branchCreated": { "type": "boolean" },
+        "config": { "type": "object" }
+      }
+    },
+    "iterationCounts": {
+      "type": "object",
+      "properties": {
+        "buildFixRounds": { "type": "integer", "default": 0 },
+        "reviewRounds": { "type": "object" },
+        "validationPipelineRuns": { "type": "integer", "default": 0 }
+      }
+    },
+    "hardeningScore": {
+      "type": ["object", "null"],
+      "properties": {
+        "total": { "type": "number" },
+        "threshold": { "type": "number" }
+      }
+    },
+    "customGates": { "type": "array" },
+    "extensions": { "type": "object" },
+    "escalations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "source", "timestamp"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["build-loop", "review-deadlock", "agent-timeout", "validation-loop"],
+            "description": "What kind of escalation"
+          },
+          "source": {
+            "type": "string",
+            "description": "Agent or gate that triggered escalation (e.g., 'build-fixer', 'reviewer:security')"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["critical", "high", "medium", "low"],
+            "description": "Impact severity classification"
+          },
+          "attempts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "round": { "type": "integer" },
+                "issuesFound": { "type": "string" },
+                "fixesApplied": { "type": "string" },
+                "result": { "type": "string" }
+              }
+            },
+            "description": "Per-attempt failure history"
+          },
+          "rootCause": {
+            "type": "string",
+            "description": "Analysis of why the loop keeps failing"
+          },
+          "recommendation": {
+            "type": "string",
+            "enum": ["reassign", "decompose", "revise-approach", "accept-with-limitations", "defer"],
+            "description": "Recommended resolution"
+          },
+          "recommendationDetail": {
+            "type": "string",
+            "description": "Specific explanation of the recommendation"
+          },
+          "blocking": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "What other tasks/gates are blocked by this"
+          },
+          "timestamp": { "type": "string", "format": "date-time" }
+        }
+      },
+      "description": "Structured escalation reports when iteration limits are hit"
+    },
+    "workerHandoffs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["workerId", "direction", "timestamp"],
+        "properties": {
+          "workerId": { "type": "string" },
+          "direction": {
+            "type": "string",
+            "enum": ["orchestrator→worker", "worker→orchestrator", "worker→reviewer", "reviewer→orchestrator"],
+            "description": "Direction of the handoff"
+          },
+          "fromAgent": { "type": "string" },
+          "toAgent": { "type": "string" },
+          "phase": { "type": "string" },
+          "context": {
+            "type": "object",
+            "properties": {
+              "currentState": { "type": "string" },
+              "relevantFiles": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "path": { "type": "string" },
+                    "role": { "type": "string" }
+                  }
+                }
+              },
+              "dependencies": { "type": "string" },
+              "constraints": { "type": "string" }
+            }
+          },
+          "deliverable": {
+            "type": "object",
+            "properties": {
+              "description": { "type": "string" },
+              "acceptanceCriteria": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "evidenceRequired": { "type": "string" }
+            }
+          },
+          "verdict": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["pass", "fail", "needs-revision", "blocked", "escalated"]
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": { "type": "string", "enum": ["file-citation", "build-output", "test-result", "grep-match"] },
+                    "reference": { "type": "string" },
+                    "detail": { "type": "string" }
+                  }
+                }
+              },
+              "issuesFound": { "type": "integer" },
+              "summary": { "type": "string" }
+            }
+          },
+          "timestamp": { "type": "string", "format": "date-time" }
+        }
+      },
+      "description": "Structured handoff records between agents"
+    },
+    "phaseChecklist": {
+      "type": ["object", "null"],
+      "default": null,
+      "description": "Persisted checklist state — survives compaction. Written by orchestrator on every step transition, read by tp-session-start hook for recovery, included in tp-pre-compact checkpoint. Keys are phase names, values are objects mapping step labels to status strings.",
+      "properties": {
+        "initialization": { "type": "object", "additionalProperties": { "type": "string", "enum": ["done", "active", "pending", "skipped"] } },
+        "conventionCheck": { "type": "object", "additionalProperties": { "type": "string", "enum": ["done", "active", "pending", "skipped"] } },
+        "intentExploration": { "type": "object", "additionalProperties": { "type": "string", "enum": ["done", "active", "pending", "skipped"] } },
+        "planning": { "type": "object", "additionalProperties": { "type": "string", "enum": ["done", "active", "pending", "skipped"] } },
+        "implementation": { "type": "object", "additionalProperties": { "type": "string", "enum": ["done", "active", "pending", "skipped"] } },
+        "qa": { "type": "object", "additionalProperties": { "type": "string", "enum": ["done", "active", "pending", "skipped"] } },
+        "validation": { "type": "object", "additionalProperties": { "type": "string", "enum": ["done", "active", "pending", "skipped"] } },
+        "completion": { "type": "object", "additionalProperties": { "type": "string", "enum": ["done", "active", "pending", "skipped"] } }
+      }
+    },
+    "bootstrapContext": {
+      "type": ["object", "null"],
+      "default": null,
+      "description": "Context gathered during Phase -1 bootstrap (sources read, missing, project type, density)",
+      "properties": {
+        "sourcesRead": { "type": "array", "items": { "type": "string" } },
+        "sourcesMissing": { "type": "array", "items": { "type": "string" } },
+        "projectType": { "type": "string" },
+        "contextDensity": { "type": "string", "enum": ["high", "medium", "low"] }
+      }
+    },
+    "conventionBootstrapPending": {
+      "type": "boolean",
+      "default": false,
+      "description": "Set in Phase -0.5 when convention discovery runs in background. Cleared after task completion when user reviews drafts."
+    },
+    "memplexAvailable": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether memplex MCP tools were detected at task init (Step 3a)"
+    },
+    "memplexNoticeShown": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the first-task capability notice was shown (once per project)"
+    },
+    "memplexContext": {
+      "type": ["object", "null"],
+      "default": null,
+      "description": "Context retrieved from memplex during this task, organized by phase",
+      "properties": {
+        "init": { "type": "object", "description": "Initial knowledge search results" },
+        "conventionCheck": { "type": "object", "description": "Conventions from past tasks" },
+        "intentExploration": { "type": "object", "description": "Past decisions, rejected approaches" },
+        "planning": { "type": "object", "description": "File coupling, patterns for planning" },
+        "implementation": { "type": "object", "description": "Per-agent assembled context" },
+        "qa": { "type": "object", "description": "Error resolutions found during QA" },
+        "validation": { "type": "object", "description": "Error resolutions for build-fixer" }
+      }
+    },
+    "knowledgeSaved": {
+      "type": ["object", "null"],
+      "default": null,
+      "description": "Knowledge written to memplex at task completion",
+      "properties": {
+        "fileCouplings": { "type": "integer", "default": 0 },
+        "errorResolutions": { "type": "integer", "default": 0 },
+        "patterns": { "type": "integer", "default": 0 },
+        "decisions": { "type": "integer", "default": 0 }
+      }
+    },
+    "completenessCheck": {
+      "type": "object",
+      "default": null,
+      "description": "Tracks API-to-frontend coverage. Populated during QA phase.",
+      "properties": {
+        "endpointsAdded": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "API routes added during this task"
+        },
+        "frontendConsumers": {
+          "type": "object",
+          "default": {},
+          "description": "Map of endpoint -> frontend file that calls it. Null value = gap."
+        },
+        "gapCount": {
+          "type": "integer",
+          "default": 0,
+          "description": "Number of endpoints without frontend consumers"
+        },
+        "journeysTotal": {
+          "type": "integer",
+          "default": 0
+        },
+        "journeysComplete": {
+          "type": "integer",
+          "default": 0
+        },
+        "smellTestPassed": {
+          "type": "boolean",
+          "default": false,
+          "description": "True only after product smell test passes"
+        }
+      }
+    },
+    "frontendParity": {
+      "type": "object",
+      "default": null,
+      "properties": {
+        "detected": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Frontend directories detected in project (mobile/, dashboard/, etc.)"
+        },
+        "required": {
+          "type": "boolean",
+          "default": false,
+          "description": "True if task adds API endpoints and frontends exist"
+        }
+      }
+    },
+    "waveProgress": {
+      "type": ["object", "null"],
+      "default": null,
+      "description": "Per-wave progress tracking for Blueprint execution. Each key is a wave ID.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "status": { "type": "string", "enum": ["pending", "in-progress", "completed", "failed"] },
+          "features": { "type": "array", "items": { "type": "string" } },
+          "validation": { "type": ["object", "null"] },
+          "filesModified": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "lastProgressNoteToolCall": {
+      "type": "integer",
+      "default": 0,
+      "description": "toolCallCount at the time of last progressNote append. Used by heartbeat to detect staleness."
+    },
+    "driftBaseline": {
+      "type": ["object", "null"],
+      "default": null,
+      "description": "Drift index at task start. Used to detect if task introduced drift. Set by /drift or at task init if recent report exists.",
+      "properties": {
+        "index": { "type": "number", "description": "Drift index score (0-100)" },
+        "scannedAt": { "type": "string", "format": "date-time" },
+        "highFindings": { "type": "integer", "description": "Number of high-severity findings" }
+      }
+    },
+    "failures": { "type": "array" },
+    "sessionFile": { "type": ["string", "null"] },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "lastUpdated": { "type": "string", "format": "date-time" },
+    "workflow": { "type": "string", "default": "taskplex" }
+  }
+}

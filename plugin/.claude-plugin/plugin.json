@@ -1,0 +1,23 @@
+{
+  "name": "taskplex",
+  "description": "Structured workflow orchestration for AI coding agents. Design-first development with quality gates, adversarial verification, and multi-agent coordination.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Jas Naidu"
+  },
+  "homepage": "https://github.com/codicis-ai/taskplex",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/codicis-ai/taskplex"
+  },
+  "license": "UNLICENSED",
+  "keywords": [
+    "workflow",
+    "orchestration",
+    "governance",
+    "multi-agent",
+    "quality-gates",
+    "verification",
+    "design-first"
+  ]
+}

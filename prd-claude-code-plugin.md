@@ -17,7 +17,7 @@ Claude Code has a plugin system that supports every component TaskPlex uses: ski
 
 Package TaskPlex as a Claude Code plugin that installs with:
 ```
-claude plugin install taskplex@jasnaidu-sa
+claude plugin install taskplex@codicis-ai
 ```
 
 And makes `/taskplex:tp`, `/taskplex:plan`, `/taskplex:drift`, `/taskplex:solidify`, and `/taskplex:evaluate` available immediately.
@@ -142,10 +142,10 @@ taskplex-plugin/
   "author": {
     "name": "Jas Naidu"
   },
-  "homepage": "https://github.com/jasnaidu-sa/taskplex",
+  "homepage": "https://github.com/codicis-ai/taskplex",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jasnaidu-sa/taskplex-plugin"
+    "url": "https://github.com/codicis-ai/taskplex"
   },
   "license": "UNLICENSED",
   "keywords": [
@@ -367,7 +367,7 @@ See migration guide: {URL}
 
 ### Manual migration steps
 
-1. Install the plugin: `claude plugin install taskplex@jasnaidu-sa`
+1. Install the plugin: `claude plugin install taskplex@codicis-ai`
 2. Remove old files from `~/.claude/`:
    - Delete `~/.claude/hooks/tp-*.mjs`, `hook-utils.mjs`, `start-task-sentinel.mjs`
    - Delete `~/.claude/taskplex/` directory
@@ -469,7 +469,7 @@ If the plugin breaks mid-task:
 - Create `taskplex-plugin` repo (separate from design repo)
 - Push plugin structure
 - Write installation README with migration guide
-- Test: `claude plugin install taskplex@jasnaidu-sa`
+- Test: `claude plugin install taskplex@codicis-ai`
 
 ### Phase 6: Official Anthropic marketplace submission
 - Submit via claude.ai/settings/plugins/submit
@@ -482,7 +482,7 @@ If the plugin breaks mid-task:
 
 2. **Hook command paths**: `${CLAUDE_PLUGIN_ROOT}` — confirmed as the official variable.
 
-3. **Single repo or separate repo?** Separate — marketplace needs clean root with `.claude-plugin/` at top level. Design docs stay in `jasnaidu-sa/taskplex`.
+3. **Single repo or separate repo?** Separate — marketplace needs clean root with `.claude-plugin/` at top level. Design docs stay in `codicis-ai/taskplex`.
 
 4. **Keep standalone mode?** Yes — documented as alternative for development. Plugin is primary path.
 
