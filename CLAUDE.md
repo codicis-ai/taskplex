@@ -143,6 +143,7 @@ start-task-sentinel.mjs
 | `prd-session-guardian.md` | PRD: Session guardian phases 1-3 (heartbeat checks → hybrid triggers → background agent). Layer 2 (behavioral). Build after Layer 1. |
 | `design-plan-merge.md` | Design: Merge /plan's rich phases (research, product context, journeys, intent file, guardrails) into /tp. Eliminates the quality gap between running /plan+/tp vs /tp alone. |
 | `prd-claude-code-plugin.md` | PRD: Package TaskPlex as Claude Code plugin. One-command install, marketplace distribution, versioned updates. Foundation for multi-runtime distribution. |
+| `prd-cursor-plugin.md` | PRD: Cursor 3 plugin adaptation. 3 hooks (from 9), .mdc rules for design gate + workflow + resume, subagents/ directory, shared taskplex-core. |
 
 ## What's Built vs What's Designed
 
