@@ -350,11 +350,21 @@ Blueprint at scale:
 
 ## 5. Quality Profiles
 
-| Profile | Required Gates | Hardening | Auto-Commit | Default For |
-|---------|---------------|-----------|-------------|-------------|
-| **Lean** | (none) | Skipped | Yes | Trivial tasks |
-| **Standard** | tests, lint, security, closure, code review, compliance | Advisory (red-lines block) | No | Standard/Team |
-| **Enterprise** | All standard + typecheck, hardening, readiness | Blocking | No | Blueprint |
+**User-confirmed**: The quality profile is presented to the user during init (Step 5) with auto-detected defaults. The user must approve or change it. Even in autonomous mode, this is agreed upfront — the agent never picks its own oversight level.
+
+| Profile | Required Gates | Hardening | Default For |
+|---------|---------------|-----------|-------------|
+| **Lean** | Build checks only | Skipped | Light route |
+| **Standard** | security, closure, code review (3 agents) | Advisory (red-lines block) | Standard route |
+| **Enterprise** | All standard + hardening (blocking) + compliance (5+ agents) | Blocking | Blueprint route |
+
+**Validation artifact gate** (pre-commit hook): The commit is blocked unless the actual review files exist on disk. Inline grep checks do not produce these files — the review agents must be spawned.
+
+| Profile | Required Artifacts Before Commit |
+|---------|--------------------------------|
+| **Lean** | None — build pass sufficient |
+| **Standard** | `reviews/security.md` + `reviews/closure.md` + `reviews/code-quality.md` |
+| **Enterprise** | All of standard + `hardening/report.md` + `reviews/compliance.md` |
 
 ---
 

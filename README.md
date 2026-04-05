@@ -91,11 +91,15 @@ When a task touches databases, external APIs, caching, auth, or infrastructure, 
 
 ### Quality Profiles
 
-| Profile | What It Means |
-|---------|--------------|
-| **Lean** | Minimal gates, no hardening |
-| **Standard** | Full review pipeline, advisory hardening |
-| **Enterprise** | Full pipeline + blocking hardening + dependency/license/migration checks |
+The user selects the quality profile during init — the agent never picks its own oversight level. Even in autonomous mode, this is agreed upfront.
+
+| Profile | Validation Agents | Required Artifacts Before Commit |
+|---------|------------------|--------------------------------|
+| **Lean** | None (build checks only) | None |
+| **Standard** | security, closure, code review (3 agents) | `security.md` + `closure.md` + `code-quality.md` |
+| **Enterprise** | + hardening + compliance (5+ agents) | All of standard + `hardening/report.md` + `compliance.md` |
+
+The pre-commit hook verifies these artifacts exist on disk. Inline grep checks cannot produce them — the review agents must actually run.
 
 ### Portable Worktree Isolation
 
@@ -111,22 +115,33 @@ Background observation during implementation:
 
 ## Architecture
 
+### Plugin (Claude Code — installable)
+
+```
+plugin/
+├── .claude-plugin/plugin.json     Plugin manifest (v1.0.0)
+├── agents/                        23 agent definitions (flat)
+├── skills/
+│   ├── tp/                        Primary entry point (/taskplex:tp)
+│   ├── plan/                      Strategic planning
+│   ├── drift/                     Drift detection
+│   ├── solidify/                  Skill evolution merge
+│   ├── evaluate/                  Product evaluation (audit + review)
+│   ├── frontend/                  Frontend development (a11y, responsive, components)
+│   └── workflow/references/       Core: 6 phase files + 8 contract files
+├── hooks/                         9 hook files + hooks.json wiring
+└── .mcp.json                      Playwright MCP
+```
+
+### Standalone (manual installation)
+
 ```
 ~/.claude/
-├── commands/          5 slash commands (taskplex, tp, plan, solidify, drift)
+├── commands/          5 slash commands
 ├── hooks/             9 hook files (design gate, heartbeat, pre-commit, etc.)
-├── agents/
-│   ├── core/          19 agent definitions
-│   └── utility/       4 utility agents
-├── taskplex/
-│   ├── phases/        6 phase files (init, planning, qa, validation, bootstrap, prd)
-│   ├── policy.json    Quality profiles, limits, agent lists
-│   ├── gates.md       Gate catalog
-│   └── ...            7 contract/schema files
-└── skills/
-    ├── evaluate/      Product evaluation (audit + review)
-    ├── frontend/      Frontend development (design system, a11y, responsive)
-    └── plan/          Strategic planning wrapper
+├── agents/            23 agent definitions (core/ + utility/)
+├── taskplex/          6 phase files + 8 contracts
+└── skills/            3 companion skills (evaluate, frontend, plan)
 ```
 
 ## Optional Integrations
@@ -156,7 +171,7 @@ See `multi-runtime-plan.md` for full distribution architecture.
 
 ## Design Documents
 
-This repository contains the design, documentation, and backups for TaskPlex:
+This repository (`codicis-ai/taskplex`) contains design, documentation, plugin, and backups:
 
 | Document | Purpose |
 |----------|---------|
@@ -166,14 +181,25 @@ This repository contains the design, documentation, and backups for TaskPlex:
 | `session-guardian-design.md` | Background session observer design (inspired by KAIROS) |
 | `prd-workflow-enforcement.md` | PRD: Artifact-based enforcement gates |
 | `prd-session-guardian.md` | PRD: Behavioral enforcement (3 phases) |
+| `prd-claude-code-plugin.md` | PRD: Claude Code plugin packaging |
+| `prd-cursor-plugin.md` | PRD: Cursor 3 plugin adaptation |
 | `memplex-integration.md` | Memplex integration spec |
-| `test-plan.md` | Comprehensive test plan (15 tests) |
+| `test-plan.md` | Comprehensive test plan |
+
+## Codicis AI Organization
+
+| Repo | Product |
+|------|---------|
+| `codicis-ai/taskplex` | TaskPlex — workflow orchestration (this repo) |
+| `codicis-ai/memplex` | Memplex — project memory and intelligence |
+| `codicis-ai/taskwright` | TaskWright — AI personal assistant |
+| `codicis-ai/memwright` | Memwright — memory desktop application |
 
 ## Status
 
-**Built and active**: 5 commands, 9 hooks, 6 phase files, 8 contracts, 23 agents, 3 skills, artifact-based enforcement gates, session guardian Phase 1, TaskPlex-managed worktrees, code intelligence (LSP + ast-grep), production impact assessment, context-preserving QA fix loop.
+**Built and active**: Claude Code plugin (`plugin/`), 7 skills, 9 hooks, 6 phase files, 8 contracts, 23 agents, artifact-based enforcement gates (spec, critic, blueprint, validation), session guardian Phase 1, user-confirmed quality profiles, validation artifact gate, TaskPlex-managed worktrees, code intelligence (LSP + ast-grep), production impact assessment, context-preserving QA fix loop.
 
-**Designed, not yet built**: /plan merge into /tp (research, product context, journeys, intent guardrails), multi-runtime distribution, Pi plugin, session guardian Phases 2-3, board architecture, memplex HTTP API.
+**Designed, not yet built**: Cursor 3 plugin (PRD complete, spike pending), /plan merge into /tp, multi-runtime distribution (6 more runtimes), session guardian Phases 2-3, Pi plugin, board architecture, memplex HTTP API.
 
 ## License
 

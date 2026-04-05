@@ -174,6 +174,9 @@ start-task-sentinel.mjs
 - Workflow enforcement gates: acknowledgment gate (blocks impl without user approval) + critic gate (blocks impl without critic review, artifact fallback) + execution continuity reminder
 - Session guardian Phase 1: scope/ownership/file-count checks in heartbeat, append-only observation log, Phase 2 trigger detection (scope-alarm, ownership-conflict, build-loop)
 - TaskPlex-managed worktrees: Blueprint agents use `git worktree` (not runtime-specific isolation). Portable across all runtimes with git.
+- User-confirmed quality profile: lean/standard/enterprise selected during init, never auto-assigned silently. Determines validation rigor. Even autonomous mode requires user confirmation.
+- Validation artifact gate: pre-commit hook verifies actual review files exist (security.md, closure.md, code-quality.md, hardening/report.md, compliance.md) per quality profile. Inline greps cannot bypass.
+- Claude Code plugin: packaged in `plugin/` directory (codicis-ai/taskplex). Skills, agents, hooks, MCP. All paths use `${CLAUDE_PLUGIN_ROOT}`.
 
 ### Designed but Not Built
 - Multi-runtime distribution — Cursor, Pi, Gemini, Codex, Antigravity, OpenCode, Windsurf (plan in `multi-runtime-plan.md`)
