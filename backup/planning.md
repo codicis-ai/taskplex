@@ -425,11 +425,12 @@ TaskCreate: "Update documentation"
 For Blueprint route, call TaskCreate for each:
 ```
 TaskCreate: "Present architecture to user"
-TaskCreate: "Worker 1: {section title} (worktree)"
-TaskCreate: "Worker 2: {section title} (worktree)"
-TaskCreate: "Worker 3: {section title} (worktree)" (if applicable)
+TaskCreate: "Create worktrees for workers"
+TaskCreate: "Worker 1: {section title}"
+TaskCreate: "Worker 2: {section title}"
+TaskCreate: "Worker 3: {section title}" (if applicable)
 TaskCreate: "Coherence check — verify each worker matches spec"
-TaskCreate: "Merge worktrees + build gate"
+TaskCreate: "Merge worker branches + cleanup worktrees + build gate"
 TaskCreate: "Tactical critic review"
 TaskCreate: "Update documentation"
 ```
@@ -714,46 +715,115 @@ If triggered:
 
 **⚠️ HARD RULES (Blueprint implementation)**:
 1. The orchestrator MUST NOT edit source code directly — ALL implementation goes through agents
-2. Every agent MUST use `isolation: "worktree"` — no exceptions
+2. Every agent MUST run in its own git worktree (TaskPlex-managed — see Worktree Management below)
 3. Independent agents MUST be dispatched in a **single message** (parallel Agent tool calls)
 4. Do NOT pause between agent dispatches — see Execution Continuity Rule above
 5. Run straight through: dispatch all agents → merge results → build check → QA → validation
 6. The `tp-design-gate` hook blocks orchestrator source edits until `manifest.implementationDelegated = true`
 
+### Worktree Management (TaskPlex-managed, portable)
+
+TaskPlex manages worktrees directly via `git worktree` commands — NOT via Claude Code's `isolation: "worktree"` parameter. This is intentional: `isolation: "worktree"` is Claude Code-specific, has a known bug with team agents, and doesn't exist in Cursor, Codex, Gemini, OpenCode, or Windsurf. TaskPlex-managed worktrees work on any runtime with git.
+
+**Before spawning each Blueprint worker:**
+```bash
+# Create worktree branch and directory
+git worktree add .claude-task/{taskId}/worktrees/worker-{n} -b tp-worker-{taskId}-{n}
+```
+
+This creates:
+- A branch `tp-worker-{taskId}-{n}` from current HEAD
+- A full checkout at `.claude-task/{taskId}/worktrees/worker-{n}/`
+
+**Agent prompt includes the worktree path:**
+```
+Your working directory is: .claude-task/{taskId}/worktrees/worker-{n}/
+All file reads and edits MUST use paths relative to this directory.
+Commit your changes in the worktree before returning.
+```
+
+**After all workers return — merge:**
+```bash
+# For each completed worker:
+cd {project-root}
+git merge --no-ff tp-worker-{taskId}-{n} -m "feat({section}): {title}"
+# If conflict: spawn merge-resolver agent
+```
+
+**Cleanup after merge:**
+```bash
+git worktree remove .claude-task/{taskId}/worktrees/worker-{n}
+git branch -d tp-worker-{taskId}-{n}
+```
+
+**If worker made no changes:**
+```bash
+git worktree remove .claude-task/{taskId}/worktrees/worker-{n}
+git branch -D tp-worker-{taskId}-{n}
+```
+
+**Track in manifest:**
+```json
+"worktrees": {
+  "worker-{n}": {
+    "path": ".claude-task/{taskId}/worktrees/worker-{n}",
+    "branch": "tp-worker-{taskId}-{n}",
+    "status": "active|merged|failed|cleaned",
+    "createdAt": "ISO",
+    "mergedAt": "ISO|null"
+  }
+}
+```
+
+**Runtime portability**: On runtimes that DO have native worktree support (Cursor `/worktree`, future Claude Code fix), TaskPlex can optionally use the native mechanism. The manifest tracks the same state regardless. For now, `git worktree` is universal.
+
 4. **Spawn implementation agents** (fan-out, non-stop):
+
+   **Step 1 — Create worktrees** for all workers:
+   ```bash
+   # Create all worktrees before spawning any agents
+   git worktree add .claude-task/{taskId}/worktrees/worker-1 -b tp-worker-{taskId}-1
+   git worktree add .claude-task/{taskId}/worktrees/worker-2 -b tp-worker-{taskId}-2
+   git worktree add .claude-task/{taskId}/worktrees/worker-3 -b tp-worker-{taskId}-3
+   ```
+   Track each in `manifest.worktrees`.
+
+   **Step 2 — Dispatch agents**:
 
    **Independent sections** — dispatch ALL in one message using parallel Agent tool calls:
    ```
    // In a SINGLE response, call Agent multiple times:
-   Agent({ prompt: "worker-1 brief...", isolation: "worktree" })
-   Agent({ prompt: "worker-2 brief...", isolation: "worktree" })
-   Agent({ prompt: "worker-3 brief...", isolation: "worktree" })
+   Agent({ prompt: "worker-1: working dir is .claude-task/{taskId}/worktrees/worker-1/ ..." })
+   Agent({ prompt: "worker-2: working dir is .claude-task/{taskId}/worktrees/worker-2/ ..." })
+   Agent({ prompt: "worker-3: working dir is .claude-task/{taskId}/worktrees/worker-3/ ..." })
    ```
 
    **Dependent sections** — dispatch sequentially, but immediately (no user check-in between):
    ```
-   Agent({ prompt: "worker-1 (foundation)...", isolation: "worktree" })
-   // worker-1 returns → immediately dispatch worker-2
-   Agent({ prompt: "worker-2 (depends on worker-1)...", isolation: "worktree" })
+   Agent({ prompt: "worker-1 (foundation): working dir is worktrees/worker-1/ ..." })
+   // worker-1 returns → merge worker-1 into main → create worker-2 worktree from updated main
+   git merge --no-ff tp-worker-{taskId}-1
+   git worktree add .claude-task/{taskId}/worktrees/worker-2 -b tp-worker-{taskId}-2
+   Agent({ prompt: "worker-2 (depends on worker-1): working dir is worktrees/worker-2/ ..." })
    ```
 
    **Before spawning**: Run Memplex Context Assembly for each worker's primary files (from worker brief).
 
    Each agent:
    > Spawn implementation-agent (sonnet) from ~/.claude/agents/core/implementation-agent.md
-     Context: "Read your brief at .claude-task/{taskId}/workers/worker-{n}-brief.md. Implement the plan." + Known Context block (if memplex available)
+     Context: "Your working directory is .claude-task/{taskId}/worktrees/worker-{n}/. Read your brief at {project-root}/.claude-task/{taskId}/workers/worker-{n}-brief.md. Implement the plan. Commit your changes before returning." + Known Context block (if memplex available)
      max_turns: 30
-     **isolation: "worktree"** ← MANDATORY for Blueprint
-     Writes: source code changes, deferred items
+     Writes: source code changes in worktree, deferred items
      Returns: "STATUS: completed|blocked. FILES_MODIFIED: [...]. BUILD: pass|fail."
 
    **After all agents are dispatched**, set `manifest.implementationDelegated = true`.
 
-   **Post-worker coherence check + merge** (after all workers return):
+   **Step 3 — Post-worker coherence check + merge** (after all workers return):
    1. **Coherence check per worker** (before merge): For each completed worker, spawn closure-agent (haiku) to verify output matches its worker brief. If DRIFT: one revision round in the worktree, then proceed. Check workers in parallel.
-   2. Merge each worker branch: `git merge --no-ff worktree-{worker}`
-   3. If conflict: attempt auto-resolve, else report to user
-   4. Worker commits: `git commit -m "wip(worker-{N}): {section}"`
+   2. Merge each worker branch: `git merge --no-ff tp-worker-{taskId}-{n}`
+   3. If conflict: spawn merge-resolver agent
+   4. After successful merge: `git worktree remove .claude-task/{taskId}/worktrees/worker-{n}`
+   5. Update `manifest.worktrees.worker-{n}.status = "merged"`
 
 5. **Build gate** (after merge + coherence verified): Run typecheck + lint + tests on merged result. If failures, spawn build-fixer (max rounds per policy). This catches integration issues between workers before moving to QA.
 
@@ -879,9 +949,11 @@ FOR each wave in architect's spec:
   1. READ manifest.json (current state — NOT from memory)
   2. READ spec.md wave section (agent briefs for this wave)
   3. UPDATE manifest.waveProgress.{waveId}.status = "in-progress"
-  4. SPAWN parallel agents for this wave (worktrees)
-  5. COLLECT agent results (summaries only — details on disk)
-  6. MERGE agent changes into main tree
+  4. CREATE worktrees for this wave's agents (git worktree add)
+  5. SPAWN parallel agents for this wave (each in its own worktree)
+  6. COLLECT agent results (summaries only — details on disk)
+  7. MERGE agent worktree branches into main (git merge --no-ff)
+  8. CLEANUP worktrees (git worktree remove)
   7. UPDATE manifest:
      - waveProgress.{waveId}.status = "completed"
      - progressNotes.push(wave summary)
@@ -950,31 +1022,31 @@ For each wave:
    For each feature in wave 0, dispatch immediately one after another:
    - Update prd-state.json: feature status = `in-progress`
    - Check attempt count (max per policy `limits.prdFeatureAttemptsAutonomous` in autonomous mode)
+   - Create worktree: `git worktree add .claude-task/{taskId}/worktrees/{feature-slug} -b tp-worker-{taskId}-{feature-slug}`
    - Each feature gets architect-level worker brief + implementation agent dispatch
    > Spawn implementation-agent (sonnet) from ~/.claude/agents/core/implementation-agent.md
-     Context: assembled payload, feature requirements, max_turns: 30
-     **isolation: "worktree"** ← MANDATORY
-     Writes: source code changes, deferred items
+     Context: "Your working directory is .claude-task/{taskId}/worktrees/{feature-slug}/." + assembled payload, feature requirements, max_turns: 30
+     Writes: source code changes in worktree, deferred items
      Returns: "STATUS: completed|blocked. FILES_MODIFIED: [...]. BUILD: pass|fail."
-   - On return: update manifest + prd-state.json, **immediately dispatch next feature**
-   - If failed: mark dependent features as `blocked`, continue to next — do NOT stop to ask
+   - On return: merge worktree branch, cleanup worktree, update manifest + prd-state.json, **immediately dispatch next feature**
+   - If failed: mark dependent features as `blocked`, cleanup worktree, continue to next — do NOT stop to ask
 
 2. **Wave 1+** (parallel — independent features):
+   - Create all worktrees for the wave before spawning any agents
    - Dispatch ALL features in the wave in a **single message** using parallel Agent tool calls
-   - Every agent MUST use `isolation: "worktree"`
-   - After all return: merge, update state, run wave validation, proceed to next wave immediately
+   - Each agent gets its worktree path in the prompt
+   - After all return: merge all worktree branches, cleanup worktrees, update state, run wave validation, proceed to next wave immediately
 
 ### Wave Merge
 
 After each wave completes:
-1. List completed feature branches
-2. Apply merge strategy (from `manifest.git.config.mergeStrategy`, default `squash`)
-3. If conflicts:
-   > Spawn merge-resolver (sonnet) from ~/.claude/agents/core/merge-resolver.md
-     Context: source branch, target branch, conflict files, feature descriptions
-     Returns: "Merge resolved: {N} files. Typecheck: PASS/FAIL"
-   - If unresolvable: mark as `blocked:merge-conflict`, notify user
-
+1. List completed feature worktree branches (`tp-worker-{taskId}-{feature-slug}`)
+2. For each completed worker:
+   a. Merge: `git merge --no-ff tp-worker-{taskId}-{feature-slug} -m "feat({feature}): {title}"`
+   b. If conflict: spawn merge-resolver agent
+   c. After merge: `git worktree remove .claude-task/{taskId}/worktrees/{feature-slug}` and `git branch -d tp-worker-{taskId}-{feature-slug}`
+   d. Update `manifest.worktrees.{feature-slug}.status = "merged"`
+3. If unresolvable conflict: mark as `blocked:merge-conflict`, notify user
 4. Update prd-state.json: wave status = `completed`
 
 ### Final Validation (after all waves)

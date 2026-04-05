@@ -92,6 +92,7 @@ Every runtime package must implement or gracefully degrade these features:
 | **Playwright MCP** | Browser verification for e2e-reviewer and QA phase. `@playwright/mcp@latest` | MCP config |
 | **Skill evolution** | Signal detection → evolutions.json → /solidify | Completion phase + command |
 | **Drift detection** | /drift command + drift-scanner agent | Command + agent |
+| **Worktree isolation** | Blueprint agents work in TaskPlex-managed `git worktree` branches. Portable across all runtimes with git. | Orchestrator creates/merges/cleans worktrees via Bash |
 | **Task list lifecycle** | Create at init → refine after plan → update during execution → recreate on resume | Runtime-specific (TaskCreate in Claude Code, equivalent elsewhere) |
 | **Mid-task changes** | User can redirect anytime, state stays current | Skill instructions |
 | **Frontend parity** | API endpoints must have UI consumers when frontend detected | Skill instructions |
@@ -175,7 +176,7 @@ taskplex-windsurf/           # Windsurf (manual install)
 | Design gate hook | Plugin hook (PreToolUse equivalent) |
 | Pre-commit hook | Plugin hook |
 | Agent spawning | Cursor subagents (async, nested, own context + model) |
-| Worktree isolation | `/worktree` command (native!) |
+| Worktree isolation | TaskPlex-managed (`git worktree`). Cursor `/worktree` available as optional native alternative. |
 | Session recovery | Plugin state + memory tool |
 | Memplex integration | MCP server (universal) |
 | Playwright | MCP server (`@playwright/mcp@latest`) |
@@ -247,7 +248,7 @@ taskplex-windsurf/           # Windsurf (manual install)
 | Agent spawning | Multi-registry subagents with tool isolation |
 | Quality profiles | Policy files (tier 2 governance) |
 | Enterprise compliance | Write-protected governance files |
-| Worktree isolation | Native sandbox + worktree support |
+| Worktree isolation | TaskPlex-managed (`git worktree`). Gemini sandbox available as optional alternative. |
 
 **Key advantage**: Write-protected governance files mean enterprise quality profiles can't be overridden by the agent. This is stronger enforcement than Claude Code (where the LLM could theoretically modify policy.json).
 
@@ -302,7 +303,7 @@ taskplex-windsurf/           # Windsurf (manual install)
 | Pre-commit gate | VS Code extension API (file watchers, command interception) — partial |
 | Implementation gate | **Advisory only** — prompt-level enforcement via skills |
 | Agent spawning | Manager View dispatches agents across workspaces |
-| Worktree isolation | Manager View workspace isolation (native) |
+| Worktree isolation | TaskPlex-managed (`git worktree`). Manager View workspace isolation available as optional alternative. |
 | Memplex integration | MCP Store — one-click install, `mcp_config.json` for custom config |
 | Playwright | MCP Store (`@playwright/mcp@latest`) or Chrome extension (native) |
 | Session recovery | VS Code extension state API |
@@ -442,7 +443,7 @@ LSP and ast-grep are referenced in agent definitions with graceful degradation �
 - Create plugin manifest + SKILL.md entry points
 - Map hooks to Cursor's plugin hook system
 - Map agent spawning to Cursor subagents
-- Map worktree isolation to `/worktree`
+- Worktree isolation: TaskPlex-managed via `git worktree` (portable). Optionally leverage Cursor `/worktree` as native alternative.
 - Configure MCP servers (playwright, memplex)
 - Test end-to-end: `/tp` → design → planning → implementation → validation
 - Submit to Cursor marketplace
@@ -667,6 +668,6 @@ Pi has no MCP, so `@playwright/mcp` doesn't work. Options:
 
 2. **Should each runtime package include the full core or reference it?** Bundling is simpler (no dependency). Referencing saves space and enables shared updates. Cursor marketplace may require bundling.
 
-3. **How do we handle runtime-specific features?** Blueprint worktrees work natively in Cursor (best), via sandbox in Gemini, not at all in Codex/Windsurf. Graceful degradation: sequential execution as fallback.
+3. **How do we handle runtime-specific features?** Blueprint worktrees are now TaskPlex-managed via `git worktree` — works on any runtime with git. Runtimes with native worktree support (Cursor `/worktree`, Gemini sandbox) can optionally use their native mechanism. Codex/Windsurf use the same `git worktree` approach.
 
 4. **Should we build a universal installer?** `npx taskplex install` → detects runtimes → installs appropriate packages. Nice UX but adds a build step.

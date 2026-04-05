@@ -422,6 +422,20 @@ The **critic gate** includes artifact-based fallback detection: if `criticComple
 
 `.claude-task/` artifacts always allowed — gates only block source file writes.
 
+### 6.5 Worktree Management (TaskPlex-managed)
+
+Blueprint route agents work in isolated git worktrees managed directly by TaskPlex via `git worktree` commands — NOT via Claude Code's `isolation: "worktree"` parameter. This is intentional for cross-runtime portability (Cursor, Codex, Gemini, OpenCode, Windsurf, Antigravity all have git).
+
+**Lifecycle**:
+1. **Create**: `git worktree add .claude-task/{taskId}/worktrees/worker-{n} -b tp-worker-{taskId}-{n}`
+2. **Agent prompt**: Includes worktree path as working directory
+3. **Merge**: `git merge --no-ff tp-worker-{taskId}-{n}` (merge-resolver agent if conflicts)
+4. **Cleanup**: `git worktree remove` + `git branch -d`
+
+**Tracked in**: `manifest.worktrees.{worker}.{path, branch, status, createdAt, mergedAt}`
+
+Standard route does NOT use worktrees — agents share the workspace with file-ownership.json enforcement.
+
 ### 6.4 Compaction Survival
 
 ```
