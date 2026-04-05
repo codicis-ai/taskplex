@@ -654,7 +654,7 @@ The `--skip-design` flag has been removed. If the user passes `--skip-design`:
 
 Map response: 1 → lean, 2 → standard, 3 → enterprise, Enter → default.
 
-**In autonomous mode**: Use the auto-detected default without asking. Log the selection to `manifest.progressNotes`.
+**In autonomous mode**: The quality profile MUST still be confirmed by the user before autonomous execution begins. This is a governance decision — the agent does not get to choose its own oversight level. Once confirmed, autonomous mode runs the full validation pipeline at the agreed profile without further interaction.
 
 | Profile | Validation Agents | Blocking Behavior |
 |---------|------------------|-------------------|
