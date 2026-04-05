@@ -787,7 +787,7 @@ Signal Detection (keyword-based, no LLM)  →  Attribution (which skill?)
 └── start-task-sentinel.mjs   # Non-edit tool counting
 ```
 
-### Agents (19 core + 3 utility)
+### Agents (19 core + 4 utility)
 ```
 ~/.claude/agents/core/
 ├── architect.md              # Opus architecture design (structured summary return)

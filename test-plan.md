@@ -77,10 +77,12 @@ Choose a project with:
 **After plan approval, during implementation phase**:
 - [ ] Orchestrator attempts to edit a source file directly (e.g., src/auth.ts)
 - [ ] **Expected**: Hook blocks with "Implementation gate: Source file edits blocked. Execution mode: blueprint — delegate to agents"
-- [ ] Message instructs to spawn agents with `isolation: "worktree"`
+- [ ] Message instructs to create worktrees and spawn agents
 - [ ] After agents dispatched and `manifest.implementationDelegated = true` set: source edits allowed
+- [ ] Acknowledgment gate blocks if `planSource.userAcknowledged !== true`
+- [ ] Critic gate blocks if `criticCompleted !== true` (artifact fallback detects review files)
 
-**Pass criteria**: Orchestrator cannot code inline in blueprint mode.
+**Pass criteria**: Orchestrator cannot code inline in blueprint mode. All gates fire in correct order.
 
 ## Test 6: Execution Continuity
 

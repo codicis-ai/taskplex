@@ -143,7 +143,7 @@ start-task-sentinel.mjs
 ## What's Built vs What's Designed
 
 ### Built and Active
-- All commands (5), hooks (9), phase files (6), contract files (8), agent definitions (19+3)
+- All commands (5), hooks (9), phase files (6), contract files (8), agent definitions (19+4)
 - Three routes: Light / Standard (default, multi-agent) / Blueprint (architect + waves)
 - Adaptive interaction model (v2) with flag-based gates
 - Three-contract chain: intent traceability → test plan → verification
@@ -168,6 +168,7 @@ start-task-sentinel.mjs
 - Context-preserving QA fix loop: fix agent continues same context across rounds, verification agent re-checks (adversarial separation maintained)
 - Workflow enforcement gates: acknowledgment gate (blocks impl without user approval) + critic gate (blocks impl without critic review, artifact fallback) + execution continuity reminder
 - Session guardian Phase 1: scope/ownership/file-count checks in heartbeat, append-only observation log, Phase 2 trigger detection (scope-alarm, ownership-conflict, build-loop)
+- TaskPlex-managed worktrees: Blueprint agents use `git worktree` (not runtime-specific isolation). Portable across all runtimes with git.
 
 ### Designed but Not Built
 - Multi-runtime distribution — Cursor, Pi, Gemini, Codex, Antigravity, OpenCode, Windsurf (plan in `multi-runtime-plan.md`)

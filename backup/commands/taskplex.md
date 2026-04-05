@@ -89,7 +89,7 @@ This file defines three routes (Standard, Team, Blueprint) with:
 
 **For Team/Blueprint routes**:
 - The orchestrator MUST delegate to agents — the implementation gate hook blocks orchestrator source edits until `manifest.implementationDelegated = true`
-- Blueprint agents MUST use `isolation: "worktree"` — no exceptions
+- Blueprint agents MUST run in TaskPlex-managed worktrees (`git worktree add` before spawn, merge after return)
 - Independent agents MUST be dispatched in a single message (parallel Agent tool calls)
 - **Execution Continuity Rule**: Once the user approves the plan, implementation runs non-stop to completion. Do NOT pause between agents, do NOT ask "should I continue?". The only reason to stop is a blocking failure.
 
@@ -342,7 +342,7 @@ The user may interrupt at any time during a task — to add scope, change direct
 10. **NEVER implement directly in team/blueprint mode** — delegate to agents, the implementation gate will block you
 11. **NEVER ask "should I continue?" during implementation** — the user approved the plan, execute it non-stop
 12. **NEVER pause between agent dispatches** — dispatch all independent agents in one message (parallel calls)
-13. **NEVER skip worktrees in blueprint mode** — every implementation agent MUST use `isolation: "worktree"`
+13. **NEVER skip worktrees in blueprint mode** — create TaskPlex-managed worktrees (`git worktree add`) before spawning each implementation agent
 14. **NEVER loop through features one-at-a-time asking for confirmation** — dispatch wave, run to completion
 
 ## RECOVERY
