@@ -85,11 +85,44 @@ Before any QA testing, database migrations must be applied. QA tests the running
    - **BLOCK QA** — do not proceed to smoke test
    - Report to user: "Migration failed: {error}. QA cannot proceed until database is current."
 
-4. **Log**: Add to `manifest.progressNotes`: "Migration applied: {file(s)}. Tool: {tool}."
+4. **Write migration artifact** (MANDATORY — pre-commit hook checks for this):
+   Write `.claude-task/{taskId}/migration-applied.json`:
+   ```json
+   {
+     "applied": true,
+     "tool": "supabase|prisma|diesel|psql",
+     "files": ["supabase/migrations/027_event_engine.sql"],
+     "timestamp": "ISO",
+     "output": "migration output summary"
+   }
+   ```
+   This file is checked by the pre-commit hook. Without it, commits are blocked when migration files are in modifiedFiles.
 
-**If no migration files found**: Skip this step.
+5. **Log**: Add to `manifest.progressNotes`: "Migration applied: {file(s)}. Tool: {tool}."
+
+**If no migration files found**: Skip this step. No artifact needed.
 
 Update checklist: mark 4.5.1b complete.
+
+---
+
+## Step 4.5.1c: Start Dev Server (if product type requires it)
+
+**For UI App (web) and API/Service product types**: The dev server must be running before smoke test, journey walkthrough, and e2e review. Start it now.
+
+1. **Detect start command** from project:
+   - `package.json` scripts: `dev`, `start`, `serve` → `npm run dev`
+   - `Cargo.toml` with `actix-web`/`axum`/`rocket` → `cargo run`
+   - `manage.py` → `python manage.py runserver`
+   - If command cannot be determined → ask user
+
+2. **Start in background**: Run the dev server and wait for it to be ready (check health endpoint or port availability, max 30 seconds).
+
+3. **Record URL**: Set `manifest.qa.devServerUrl` for use by smoke test, journey walkthrough, and e2e-reviewer.
+
+4. If server fails to start: **BLOCK QA** — report to user.
+
+**For CLI, Library, Infrastructure**: Skip this step.
 
 ---
 

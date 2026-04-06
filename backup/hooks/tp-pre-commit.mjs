@@ -134,8 +134,19 @@ async function main() {
         /\.(tsx|jsx|vue|svelte)$/i.test(f) ||
         /\/(pages|components|app|views|screens)\//i.test(f)
       );
-      if (hasUIFiles && !fs.existsSync(path.join(reviewsDir, 'e2e.md'))) {
-        conditionalMissing.push('e2e review (reviews/e2e.md) — UI files modified');
+      if (hasUIFiles) {
+        const e2ePath = path.join(reviewsDir, 'e2e.md');
+        if (!fs.existsSync(e2ePath)) {
+          conditionalMissing.push('e2e review (reviews/e2e.md) — UI files modified');
+        } else if (profile === 'enterprise') {
+          // Enterprise: SKIP verdict not acceptable for e2e when UI files modified
+          try {
+            const e2eContent = fs.readFileSync(e2ePath, 'utf8');
+            if (/verdict[:\s]*skip/i.test(e2eContent)) {
+              conditionalMissing.push('e2e review (reviews/e2e.md) — verdict is SKIP but enterprise profile requires actual browser testing. Ensure Playwright MCP is available and dev server is running.');
+            }
+          } catch { /* file exists but unreadable, allow */ }
+        }
       }
 
       // User workflow reviewer — required when routing/navigation files modified
@@ -144,6 +155,14 @@ async function main() {
       );
       if (hasRoutingFiles && !fs.existsSync(path.join(reviewsDir, 'user-workflow.md'))) {
         conditionalMissing.push('user workflow review (reviews/user-workflow.md) — routing files modified');
+      }
+
+      // Migration applied — required when SQL/migration files modified
+      if (hasDBFiles) {
+        const migrationApplied = path.join(taskPath, 'migration-applied.json');
+        if (!fs.existsSync(migrationApplied)) {
+          conditionalMissing.push('migration verification (migration-applied.json) — migration files modified but not verified as applied. Run QA Step 4.5.1b to apply and verify.');
+        }
       }
 
       if (conditionalMissing.length > 0) {
