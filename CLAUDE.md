@@ -172,7 +172,8 @@ start-task-sentinel.mjs
 - Production impact assessment: conditional section in spec (DB, APIs, caching, auth, infra triggers) → hardening reviewer validates
 - Context-preserving QA fix loop: fix agent continues same context across rounds, verification agent re-checks (adversarial separation maintained)
 - Workflow enforcement gates: acknowledgment gate (blocks impl without user approval) + critic gate (blocks impl without critic review, artifact fallback) + execution continuity reminder
-- Session guardian Phase 1: scope/ownership/file-count checks in heartbeat, append-only observation log, Phase 2 trigger detection (scope-alarm, ownership-conflict, build-loop)
+- Session guardian Phase 1: scope/ownership/file-count checks in heartbeat, append-only observation log, no-plan detection warning
+- Session guardian Phase 2: trigger detection (scope-alarm, ownership-conflict, build-loop) → guardian-trigger.json → design gate BLOCKS until resolved (hook-enforced, not orchestrator-dependent)
 - TaskPlex-managed worktrees: Blueprint agents use `git worktree` (not runtime-specific isolation). Portable across all runtimes with git.
 - User-confirmed quality profile: lean/standard/enterprise selected during init, never auto-assigned silently. Determines validation rigor. Even autonomous mode requires user confirmation.
 - Validation artifact gate: pre-commit hook verifies actual review files exist (security.md, closure.md, code-quality.md, hardening/report.md, compliance.md) per quality profile. Inline greps cannot bypass.
@@ -184,7 +185,7 @@ start-task-sentinel.mjs
 - Board architecture — designed in `board-architecture.md`
 - Memplex HTTP API — needed for Pi integration (no MCP in Pi)
 - Skill performance tracking — deferred until multi-agent is default
-- Session guardian Phase 2 — trigger-based haiku analysis agent between wave dispatches. Design in `prd-session-guardian.md`.
+- Session guardian Phase 2 haiku agent — trigger file blocks via hook, but the actual analysis agent spawn still depends on orchestrator. Design in `prd-session-guardian.md`.
 - Session guardian Phase 3 — full background agent (KAIROS-style). Deferred until runtime support ships.
 - /plan merge into /tp — Research, product context, journeys, intent file, architect guardrails absorbed into /tp design phase. Design in `design-plan-merge.md`.
 - Issue relations/dependencies — deferred, partially covered by prd-state.json

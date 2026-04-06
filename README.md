@@ -37,17 +37,19 @@ Every phase transition is enforced by artifact-based gates. The agent cannot ski
 | **Standard** | default | Conventions + lightweight journeys + intent file | Planning agent + spec critic + 1-3 parallel workers + tactical critic |
 | **Blueprint** | `--blueprint` | Full: research + product context + journeys + intent guardrails | Opus architect + strategic/tactical critics + multi-agent in worktrees + waves |
 
-### Enforcement (9 Hooks)
+### Enforcement (All Hook-Based, All Artifact-Checked)
 
-| Hook | What It Blocks |
-|------|---------------|
-| **Design gate** | File writes before design is approved |
-| **Acknowledgment gate** | Implementation before user approves the plan |
-| **Critic gate** | Implementation before critic review completes |
-| **Implementation gate** | Orchestrator coding inline (must delegate to agents) |
-| **Wave gate** | Next wave before previous wave validates |
-| **Pre-commit gate** | Git commits without validation passing |
-| **Session guardian** | Scope creep, ownership conflicts, build loops (advisory) |
+| Gate | What It Blocks | How |
+|------|---------------|-----|
+| **Spec gate** | Implementation without spec.md | File existence check |
+| **Critic gate** | Implementation without review artifacts | File existence in reviews/ |
+| **Blueprint gate** | Implementation without architecture + file ownership | File existence check |
+| **Implementation gate** | Orchestrator coding inline | Manifest flag (set after agent spawn) |
+| **Wave gate** | Next wave before previous validates | Manifest state |
+| **Guardian trigger gate** | Continued work after scope/ownership/build-loop deviation | guardian-trigger.json exists → blocks |
+| **Pre-commit gate** | Git commits without validation + review artifacts | File existence per quality profile |
+
+Every gate is enforced by hooks (PreToolUse). No gate depends on the orchestrator choosing to check something. Artifact-based gates check file existence — the agent cannot fake files without producing content.
 
 ### 23 Specialized Agents
 

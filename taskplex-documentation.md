@@ -666,14 +666,16 @@ A background observation system layered on top of structural gates. Three phases
 - **Scope check**: Compares edited file against planned file set (from `file-ownership.json` primary, `spec.md` regex fallback). Warns on out-of-scope source files.
 - **Ownership check**: Tracks edits per file with inferred owner from `file-ownership.json` reverse-lookup. Warns when multiple owners edit the same file.
 - **File count check**: Warns when `modifiedFiles` count exceeds planned count by >50%.
-- **Observation log**: Append-only log at `.claude-task/{taskId}/observations.md` — every edit with timestamp, file, owner, status. Used by Phase 2 triggers and memplex at completion.
-- **Phase 2 triggers**: Writes `guardian-trigger.json` when thresholds crossed (3+ scope warnings, 1+ ownership conflict, 3+ build-fix rounds).
+- **No-plan detection**: If implementation runs without spec/file-ownership (planning skipped), emits CRITICAL warning on first source edit. Previously silently degraded to logging-only.
+- **Observation log**: Append-only log at `.claude-task/{taskId}/observations.md` — every edit with timestamp, file, owner, status.
 
-**Phase 2 (triggers built, agent spawning via orchestrator)**: Orchestrator checks for `guardian-trigger.json` between wave dispatches. If present, spawns `session-guardian` agent (haiku, read-only) for deeper analysis. Agent reads observations + spec, returns structured alert. Orchestrator writes to `guardian-alerts.md`.
+**Phase 2 (built — hook-enforced triggers)**: Heartbeat writes `guardian-trigger.json` when thresholds crossed (3+ scope warnings, 1+ ownership conflict, 3+ build-fix rounds). The **design gate hook** (PreToolUse) checks for this file on every source write and **BLOCKS** until resolved. The agent must either spawn the session-guardian analysis agent and delete the trigger, or set `manifest.guardianOverride = true` (logged as degradation).
+
+This is hook-enforced, not orchestrator-dependent. Previous design relied on the orchestrator to read the trigger file between dispatches — the same unreliable actor that skips planning and validation. Now the design gate forces the issue.
 
 **Phase 3 (deferred)**: Full KAIROS-style persistent background agent. Depends on runtime support for background agents. Design in `session-guardian-design.md`.
 
-**Relationship to structural gates**: Gates (acknowledgment, critic, implementation, wave) block tool calls. Guardian observes and advises. Gates catch state violations. Guardian catches behavioral drift. Defense-in-depth.
+**Relationship to structural gates**: Both the artifact gates (spec, critic, blueprint) and the guardian trigger gate are enforced by the same hook (`tp-design-gate.mjs`). Artifact gates catch workflow bypass. Guardian trigger gate catches behavioral drift during execution. The pre-commit hook catches validation bypass. All hook-enforced, all deterministic.
 
 ---
 
