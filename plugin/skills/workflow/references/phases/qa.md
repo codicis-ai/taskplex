@@ -184,79 +184,157 @@ Update checklist: mark 4.5.2 complete.
 
 ---
 
-## Step 4.5.3: Journey Walkthrough
+## Step 4.5.3: Journey Walkthrough (Functional E2E Testing)
 
-This is the core of QA — walk the user's actual experience end to end.
+This is the core of QA — walk the user's actual experience end to end **with real test data**. This is not a visual check — it's a functional test that fills forms, submits data, verifies database state, and chains multi-step workflows.
 
-### If `product/brief.md` exists:
+### Journey Source
 
-Extract the core user journeys from the brief. For each journey:
+**If `product/brief.md` exists**: Extract core user journeys from the brief (DOES / SEES / FEELS steps).
+**If spec has User Journeys section**: Use the journey tables directly.
+**If neither exists**: Infer 2-3 journeys from the task description and modified files.
 
-1. Read the journey's steps (DOES / SEES / FEELS or DOES / GETS / FRICTION)
-2. Execute each step against the live product
-3. At each step, verify:
-   - **Functional**: Does the step work? Does the right thing happen?
-   - **Feedback**: Is there appropriate feedback? (loading states, confirmations, error messages)
-   - **Design implication**: Does it meet the constraint from the brief's design implication column?
+### For Each Journey — Three Phases
 
-### If no brief exists:
+#### Phase A: Setup (before journey starts)
 
-Infer core journeys from the task description and modified files:
-- What was the user trying to build? That's the happy path journey.
-- What's the most common variation? Test that too.
-- Aim for 2-3 journeys max.
+1. **Generate test data** for this journey:
+   - Test user credentials: `e2e-test-{timestamp}@test.local` / `TestPass123!`
+   - Test records: any data the journey needs to exist (e.g., existing tasks, projects, settings)
+   - API tokens: if auth is required, obtain a valid token
 
-### Journey execution by product type:
+2. **Ensure clean state**:
+   - Remove any leftover test data from previous runs
+   - Verify the app is in the expected starting state
+   - Confirm dev server is running (from Step 4.5.1c)
 
-**UI App:**
+3. **Write test data to** `.claude-task/{taskId}/e2e-test-data.json`:
+   ```json
+   {
+     "journey": "user-registration",
+     "testUser": { "email": "e2e-test-1712345@test.local", "password": "TestPass123!" },
+     "testData": { ... },
+     "createdAt": "ISO"
+   }
+   ```
 
-Use Playwright MCP (preferred) or agent-browser (fallback):
+#### Phase B: Execute Journey (step by step, with verification)
+
+For each step in the journey, execute the FULL action — not just navigate and screenshot.
+
+**UI App — Playwright MCP:**
 ```
-# With Playwright MCP:
-mcp__playwright__browser_navigate → {url}
-# For each step in the journey:
-mcp__playwright__browser_screenshot → capture before state
-mcp__playwright__browser_click → take the action
-mcp__playwright__browser_screenshot → capture after state
-mcp__playwright__browser_console → check for errors
+For each journey step:
 
-# With agent-browser (fallback):
-agent-browser open {url}
-agent-browser snapshot / agent-browser click @{element} / agent-browser console
+1. NAVIGATE (if needed):
+   mcp__playwright__browser_navigate → {url}
+   mcp__playwright__browser_screenshot → capture before state
+
+2. INTERACT (fill forms, click buttons, select options):
+   mcp__playwright__browser_fill_form → [
+     { selector: '#email', value: 'e2e-test@test.local' },
+     { selector: '#password', value: 'TestPass123!' }
+   ]
+   mcp__playwright__browser_click → '#submit-btn'
+
+3. WAIT for result:
+   mcp__playwright__browser_wait_for → navigation, element, or network idle
+
+4. VERIFY the outcome:
+   mcp__playwright__browser_screenshot → capture after state
+   mcp__playwright__browser_snapshot → check DOM for expected elements
+   mcp__playwright__browser_console_messages → check for errors
+
+5. VERIFY data (if the step creates/modifies data):
+   - API call: curl the relevant endpoint to confirm data was created
+   - Or: mcp__playwright__browser_navigate to a page that shows the data
+   - Or: database query via Bash if direct DB access available
+
+6. CHAIN to next step:
+   - Use data from this step (e.g., session token, created ID) in the next step
+   - Do NOT navigate away and back — continue the user's natural flow
 ```
 
-Store screenshots at `.claude-task/{taskId}/screenshots/journey-{name}-step{N}.png`
+**API / Service:**
+```bash
+For each journey step:
+
+1. EXECUTE the API call:
+   RESPONSE=$(curl -s -w '\n%{http_code}' -X {METHOD} {endpoint} \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Bearer {token}" \
+     -d '{request body with test data}')
+
+2. VERIFY response:
+   - Status code matches expected (201, 200, etc.)
+   - Response body has expected shape and values
+   - Extract data needed for next step (IDs, tokens, etc.)
+
+3. VERIFY side effects:
+   - Query the database or another endpoint to confirm state changed
+   - Check that events were emitted (if event system exists)
+   - Verify related records were created/updated
+
+4. CHAIN to next step:
+   - Pass created IDs, tokens, etc. to the next API call
+```
 
 **CLI:**
 ```bash
-# For each step in the journey:
-{command} {args-for-this-step}            # Execute the step
-# Check: stdout has expected content?
-# Check: exit code correct?
-# Check: side effects occurred? (files created, data changed)
+For each journey step:
+
+1. EXECUTE command with test data:
+   OUTPUT=$({command} {args-with-test-data})
+   EXIT_CODE=$?
+
+2. VERIFY output:
+   - Exit code correct
+   - Stdout contains expected content
+   - Side effects occurred (files created, data changed)
+
+3. CHAIN to next step:
+   - Use output from this step as input to the next
 ```
 
-**API:**
-```bash
-# For each step in the journey:
-curl -X {METHOD} {endpoint} \
-  -H "Content-Type: application/json" \
-  -d '{request body}'
-# Check: response status code correct?
-# Check: response body has expected shape?
-# Check: side effects occurred? (DB state, events fired)
-```
+#### Phase C: Cleanup (after journey completes or fails)
+
+1. **Remove test data**:
+   - Delete test user accounts created during the journey
+   - Remove test records from the database
+   - Clean up any files created during testing
+
+2. **Log cleanup** to `.claude-task/{taskId}/e2e-test-data.json`: set `cleanedUp: true`
+
+3. If cleanup fails: log warning but do not fail the journey — cleanup failures are non-blocking
+
+### Screenshot Requirements
+
+For UI journeys, capture screenshots at every state transition:
+- `screenshots/journey-{name}-step{N}-before.png` — before the action
+- `screenshots/journey-{name}-step{N}-after.png` — after the action
+- `screenshots/journey-{name}-error.png` — if a step fails
 
 ### Record results per journey:
 
 ```markdown
 ### Journey: {name}
-**Source**: brief | inferred
+**Source**: brief | inferred | spec
 **Status**: Pass | Partial | Fail
 **Steps completed**: {n}/{total}
+**Test data**: e2e-test-data.json
 **Broke at**: {step description, if failed}
+
+| Step | Action | Expected | Actual | Data Verified | Screenshot | Status |
+|------|--------|----------|--------|---------------|------------|--------|
+| 1 | Navigate /register | Form loads | Form loaded | — | step1-before.png | PASS |
+| 2 | Fill email + password | — | — | — | — | PASS |
+| 3 | Click Submit | Redirect to /login | Redirected | User in DB: yes | step3-after.png | PASS |
+| 4 | Login with credentials | Redirect to /dashboard | Redirected | Session valid | step4-after.png | PASS |
+
 **Findings**:
 - {what happened vs what should have happened}
+
+**Cleanup**: {completed | failed: reason}
 ```
 
 Update manifest: increment `journeysTested`, `journeysPassed`.

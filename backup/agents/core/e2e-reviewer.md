@@ -44,31 +44,76 @@ Only spawned when modified files match: `**/*.tsx`, `**/*.jsx`, `pages/**`, `com
 
 ## Process
 
-1. Map modified files to affected pages (max 5 pages)
-2. Start dev server if not running
-3. For each affected page:
+This is a **functional** review, not just a visual check. You navigate pages, fill forms, submit data, verify state, and chain multi-step workflows. You re-verify the user journeys that QA tested, independently.
 
-   **With Playwright MCP:**
-   - `mcp__playwright__browser_navigate` to the URL
-   - `mcp__playwright__browser_screenshot` — capture visual state
-   - `mcp__playwright__browser_snapshot` — get DOM structure
-   - `mcp__playwright__browser_console` — check for runtime errors
-   - `mcp__playwright__browser_click` — test interactions
-   - Store screenshots at `.claude-task/{taskId}/reviews/screenshots/`
+### Step 1: Read Context
 
-   **With agent-browser (fallback):**
-   - `agent-browser open {url}`
-   - `agent-browser snapshot`
-   - `agent-browser console`
+1. Read the spec and brief for user journeys / acceptance criteria
+2. Read `manifest.modifiedFiles` to identify affected pages
+3. Read `manifest.qa.devServerUrl` for the dev server URL (or detect/start it)
+4. Read `.claude-task/{taskId}/e2e-test-data.json` if it exists (test data from QA phase)
 
-4. Check cross-page navigation if routing files were modified
-5. Capture at minimum: default state, mobile viewport (375px), error/empty states
+### Step 2: Functional Journey Testing (max 3 journeys)
+
+For each journey that touches modified pages:
+
+**With Playwright MCP (preferred):**
+```
+1. NAVIGATE to starting page:
+   mcp__playwright__browser_navigate → {url}
+   mcp__playwright__browser_screenshot → before state
+
+2. FILL forms with test data:
+   mcp__playwright__browser_fill_form → [
+     { selector: '#email', value: 'e2e-review@test.local' },
+     { selector: '#password', value: 'TestPass123!' }
+   ]
+
+3. SUBMIT / CLICK action buttons:
+   mcp__playwright__browser_click → '#submit-btn'
+   mcp__playwright__browser_wait_for → navigation or element
+
+4. VERIFY outcome:
+   mcp__playwright__browser_screenshot → after state
+   mcp__playwright__browser_snapshot → DOM has expected elements
+   mcp__playwright__browser_console_messages → no runtime errors
+
+5. VERIFY data persisted (if the action creates/modifies data):
+   Use Bash to curl the API or check the response on the next page
+   
+6. CHAIN to next step — continue the user's natural flow
+```
+
+**With agent-browser (fallback):**
+```
+agent-browser open {url}
+agent-browser snapshot → check elements
+agent-browser click @{element} → take action  
+agent-browser snapshot → verify result
+agent-browser console → check errors
+```
+
+### Step 3: Page-Level Checks (affected pages only, max 5)
+
+For each page affected by modified files:
+- Default state renders correctly
+- Mobile viewport (375px) renders correctly
+- Error/empty states handled gracefully
+- Cross-page navigation works if routing was modified
+- Console has no runtime errors
+
+### Step 4: Cleanup
+
+Remove any test data created during the review (test users, test records).
 
 ## Verdict Rules
 
-- **PASS**: All pages load, key elements present, no console errors
-- **WARN**: Pages load but minor issues (layout shift, non-critical console warnings)
-- **FAIL**: Any page fails to load, critical elements missing, runtime errors
+- **PASS**: All journeys complete, forms submit correctly, data persists, no console errors
+- **WARN**: Journeys work but minor issues (layout shift, slow load, non-critical warnings)
+- **FAIL**: Any journey step fails, form submission broken, data doesn't persist, runtime errors
+- **SKIP**: No browser automation available (Playwright MCP and agent-browser both missing)
+
+**Enterprise profile note**: SKIP verdict is not accepted when UI files are modified. Ensure Playwright MCP is available.
 
 **Write to**: `.claude-task/{taskId}/reviews/e2e.md`
 **Return**: `PASS`, `WARN: {N} issues`, `FAIL: {N} issues`, or `SKIP: {reason}`
@@ -79,28 +124,43 @@ Only spawned when modified files match: `**/*.tsx`, `**/*.jsx`, `pages/**`, `com
 # E2E Review
 
 ## Summary
-{1-2 sentence overview}
+{1-2 sentence overview — functional, not just visual}
 
-## Pages Tested
-| Page | URL | Loads | Elements | Console | Screenshot | Status |
-|------|-----|-------|----------|---------|------------|--------|
-| Login | /login | Yes | All present | Clean | screenshots/login.png | PASS |
-| Dashboard | /dashboard | Yes | Missing sidebar | 2 warnings | screenshots/dashboard.png | WARN |
+## Journeys Tested
+| Journey | Steps | Forms Filled | Data Verified | Screenshots | Status |
+|---------|-------|-------------|---------------|-------------|--------|
+| User Registration | 4/4 | email, password | User in DB | 4 screenshots | PASS |
+| Login + Dashboard | 3/3 | credentials | Session valid | 3 screenshots | PASS |
+
+## Journey Details
+
+### Journey: {name}
+| Step | Action | Input Data | Expected | Actual | Status |
+|------|--------|-----------|----------|--------|--------|
+| 1 | Navigate /register | — | Form loads | Form loaded | PASS |
+| 2 | Fill form | email: e2e@test.local | — | Filled | PASS |
+| 3 | Click Submit | — | Redirect to /login | Redirected | PASS |
+| 4 | Verify account | — | User exists in DB | Confirmed via API | PASS |
+
+## Page Checks
+| Page | URL | Loads | Elements | Mobile | Console | Status |
+|------|-----|-------|----------|--------|---------|--------|
+| /register | /register | Yes | All present | OK | Clean | PASS |
+| /dashboard | /dashboard | Yes | All present | Sidebar collapses | 1 warning | WARN |
 
 ## Screenshots
-{Reference screenshots stored in .claude-task/{taskId}/reviews/screenshots/}
+{Stored in .claude-task/{taskId}/reviews/screenshots/}
 
 ## Findings
 
 ### Critical
-- **[/dashboard]** Sidebar component not rendering. Console: "Cannot read property 'items' of undefined"
+- {functional failures — forms don't submit, data doesn't persist}
 
 ### Warnings
-- **[/login]** Layout shift on load — CLS > 0.1
+- {visual issues, non-critical console warnings}
 
-## Interactions Tested
-- {Click login button → redirects to dashboard: PASS}
-- {Navigate back → returns to login: PASS}
+## Cleanup
+Test data removed: {yes/no — details}
 
 ## Verdict: {PASS | WARN | FAIL | SKIP}
 ```
@@ -109,5 +169,7 @@ Only spawned when modified files match: `**/*.tsx`, `**/*.jsx`, `pages/**`, `com
 
 - If neither Playwright MCP nor agent-browser is available: `SKIP: no browser automation available`
 - If dev server cannot start: `SKIP: dev server failed to start`
-- Max 5 pages — prioritize pages most affected by the changes
-- At least 1 screenshot per affected page required as evidence when browser is available
+- Max 3 journeys + 5 page checks
+- At least 1 screenshot per journey step required as evidence
+- Test data MUST be cleaned up after review — do not leave test accounts in the database
+- Read QA's `e2e-test-data.json` for test data if available — reuse rather than recreate
