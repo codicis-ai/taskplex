@@ -113,6 +113,52 @@ async function main() {
       }
     }
 
+    // === Conditional reviewer artifact gate (file-pattern-triggered) ===
+    // If certain file types were modified, the corresponding reviewer MUST have run.
+    // Same principle: the orchestrator can't be trusted to spawn conditional reviewers.
+    // The hook checks modified files and requires the matching review artifact.
+    if (profile !== 'lean') {
+      const modifiedFiles = (manifest.modifiedFiles || []).map(f => f.replace(/\\/g, '/'));
+      const conditionalMissing = [];
+
+      // Database reviewer — required when SQL/migration/schema files modified
+      const hasDBFiles = modifiedFiles.some(f =>
+        /\.sql$/i.test(f) || /migrations?\//i.test(f) || /schema\//i.test(f)
+      );
+      if (hasDBFiles && !fs.existsSync(path.join(reviewsDir, 'database.md'))) {
+        conditionalMissing.push('database review (reviews/database.md) — SQL/migration files modified');
+      }
+
+      // E2E reviewer — required when UI component/page files modified
+      const hasUIFiles = modifiedFiles.some(f =>
+        /\.(tsx|jsx|vue|svelte)$/i.test(f) ||
+        /\/(pages|components|app|views|screens)\//i.test(f)
+      );
+      if (hasUIFiles && !fs.existsSync(path.join(reviewsDir, 'e2e.md'))) {
+        conditionalMissing.push('e2e review (reviews/e2e.md) — UI files modified');
+      }
+
+      // User workflow reviewer — required when routing/navigation files modified
+      const hasRoutingFiles = modifiedFiles.some(f =>
+        /\/(routes|router|navigation)\//i.test(f) || /router\.(ts|js|tsx|jsx)$/i.test(f)
+      );
+      if (hasRoutingFiles && !fs.existsSync(path.join(reviewsDir, 'user-workflow.md'))) {
+        conditionalMissing.push('user workflow review (reviews/user-workflow.md) — routing files modified');
+      }
+
+      if (conditionalMissing.length > 0) {
+        denyTool(
+          `TaskPlex pre-commit: Commit blocked — conditional review artifacts missing.\n` +
+          `Modified files triggered these reviewers but their artifacts are missing:\n` +
+          `- ${conditionalMissing.join('\n- ')}\n\n` +
+          `Spawn the corresponding review agents in the validation pipeline.\n\n` +
+          `To save task state without triggering this gate, commit only .claude-task/ files:\n` +
+          `git add .claude-task/ && git commit -m "chore: TaskPlex state checkpoint"`
+        );
+        return;
+      }
+    }
+
     allowTool();
   } catch (error) {
     if (process.env.TF_DEBUG) console.error(`[tp-pre-commit] ${error.message}`);

@@ -57,6 +57,42 @@ Update checklist: mark 4.5.1 complete.
 
 ---
 
+## Step 4.5.1b: Apply Migrations (MANDATORY if migration files exist)
+
+Before any QA testing, database migrations must be applied. QA tests the running application — if migrations haven't been applied, every endpoint/query test fails.
+
+**Check**: Scan `manifest.modifiedFiles` for migration patterns: `*.sql` in `migrations/` or `supabase/migrations/`, schema files, Prisma/Diesel migration files.
+
+**If migration files found**:
+
+1. **Detect migration tool** from project:
+   - `supabase/` directory → `supabase db push` or `mcp__supabase__apply_migration`
+   - `prisma/schema.prisma` → `npx prisma migrate dev`
+   - `diesel.toml` → `diesel migration run`
+   - Raw SQL → apply via `psql` or database CLI
+   - If tool cannot be determined → ask user
+
+2. **Apply the migration**:
+   ```bash
+   # Example for Supabase:
+   supabase db push
+   # Or via MCP if available:
+   mcp__supabase__apply_migration
+   ```
+
+3. **Verify success**: Check exit code. If migration fails:
+   - Log error to `manifest.progressNotes`
+   - **BLOCK QA** — do not proceed to smoke test
+   - Report to user: "Migration failed: {error}. QA cannot proceed until database is current."
+
+4. **Log**: Add to `manifest.progressNotes`: "Migration applied: {file(s)}. Tool: {tool}."
+
+**If no migration files found**: Skip this step.
+
+Update checklist: mark 4.5.1b complete.
+
+---
+
 ## Step 4.5.2: Smoke Test
 
 Before walking journeys, verify the basic thing works at all. This catches "it doesn't even start" before wasting time on detailed testing.
