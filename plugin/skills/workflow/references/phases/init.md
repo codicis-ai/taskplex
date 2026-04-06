@@ -161,25 +161,36 @@ After creating the session file, update `manifest.sessionFile` to the actual pat
 
 **Immediately after creating the manifest and session file**, create the task list using `TaskCreate` for the high-level workflow phases. These are the initial shape — they get refined after the plan is written (see Phase A.3 in planning.md).
 
-**For full design depth**, create these tasks:
-1. "Initialize task — parse flags, create manifest, load context" (mark `in_progress`)
+**Task list header** (first task, always):
+```
+"═══ TaskPlex: {task description} ═══ Route: {Light|Standard|Blueprint} | Profile: {pending|lean|standard|enterprise} | Plan: {plan ID or 'none'}"
+```
+Update the profile in this header after Step 5 completes.
+
+**For full design depth (Standard/Blueprint)**, create these tasks:
+1. "Initialize — detect project type, resolve build commands, set quality profile" (mark `in_progress`)
 2. "Convention check — scan codebase, confirm patterns with user"
-3. "Intent exploration — synthesize context, confirm with user, resolve gaps"
+3. "Intent exploration — synthesize context, confirm approach, resolve gaps"
 4. "Write brief.md — approaches, section approval, write approved design"
-5. "Planning — write spec, critic review, user acknowledges plan"
-6. "Implementation" (placeholder — refined after plan is approved at Phase A.4)
-7. "QA — smoke test, journey walkthrough, edge cases, bug fixes"
-8. "Validation — security, closure, code review, hardening, compliance"
+5. "Planning — write spec, critic review (max 3 rounds), user reviews plan"
+6. "Implementation" (placeholder — expanded into waves/workers after plan approval)
+7. "QA — migrations, dev server, functional E2E journeys, adversarial verification"
+8. "Validation ({profile}) — {agents per profile}" where:
+   - lean: "build checks only"
+   - standard: "security + closure + code review + conditional reviewers"
+   - enterprise: "security + closure + code review + conditional + hardening + compliance"
 9. "Completion — git commit, PR, task summary"
 
 **For light design depth**, create these tasks:
-1. "Initialize task" (mark `in_progress`)
+1. "Initialize — detect project type, set quality profile" (mark `in_progress`)
 2. "Design (light) — synthesize, confirm, write brief"
-3. "Planning — write spec, critic review, user acknowledges"
-4. "Implementation" (placeholder — refined after plan is approved at Phase A.4)
-5. "QA — smoke test, journey walkthrough, edge cases, bug fixes"
-6. "Validation — security, closure, code review, compliance"
+3. "Planning — write minimal spec, user acknowledges"
+4. "Implementation" (placeholder — refined after plan approval)
+5. "QA — smoke test, journey walkthrough, edge cases"
+6. "Validation (lean) — build checks"
 7. "Completion — git commit, PR, task summary"
+
+**After plan approval (Phase A.4 in planning.md)**, expand the Implementation placeholder into specific tasks showing waves and workers. See planning.md Phase A.4 for the exact format.
 
 Mark each task `in_progress` when you start it, `completed` when done. This is what the user sees in the conversation — it must stay current.
 
@@ -267,13 +278,18 @@ A PRD is **input context**, not a bypass. The workflow still runs — the PRD gi
 
 ---
 
-## Step 4: Detect Project & Load Conventions
+## Step 4: Detect Project & Load Conventions (MANDATORY — do NOT skip)
+
+**Build commands must be resolved before proceeding to Sub-phase A.** The heartbeat hook warns if buildCommands is empty after init. The implementation build gate, QA tests, and worker self-verification ALL depend on these commands.
 
 ### Step 4a: Detect Project Type (defaults)
-- `package.json` → `npm run lint`, `npm run typecheck`, `npm run test`
-- `pyproject.toml` → `ruff check .`, `mypy .`, `pytest`
-- `Cargo.toml` → `cargo check`, `cargo test`
-- `go.mod` → `go build ./...`, `go test ./...`
+Scan project root and set `manifest.buildCommands`:
+- `package.json` → `{ typecheck: "npm run typecheck", lint: "npm run lint", test: "npm test" }`
+- `pyproject.toml` → `{ typecheck: "mypy .", lint: "ruff check .", test: "pytest" }`
+- `Cargo.toml` → `{ typecheck: "cargo check", lint: "cargo clippy", test: "cargo test" }`
+- `go.mod` → `{ typecheck: "go build ./...", lint: "go vet ./...", test: "go test ./..." }`
+
+**Write to manifest immediately.** Do NOT defer to "resolve later."
 
 ### Step 4b: Load Convention Overrides
 
@@ -632,9 +648,13 @@ The `--skip-design` flag has been removed. If the user passes `--skip-design`:
 
 ---
 
-## Step 5: Quality Profile Selection (MANDATORY — ask the user)
+## Step 5: Quality Profile Selection (MANDATORY — do NOT proceed without this)
 
-**The quality profile determines what validation gates run and whether they block the commit.** This is a significant decision — the user MUST see and approve it.
+**⚠️ HARD REQUIREMENT: This step MUST complete before Sub-phase A begins.**
+
+The quality profile determines what validation gates run and whether they block the commit. The design gate hook blocks implementation if `qualityProfile` is null. The heartbeat hook warns if it's null after init.
+
+**Do NOT skip this step to get to convention scanning faster. Do NOT default silently.**
 
 **Step 5a — Auto-detect default** (do NOT present yet):
 - Light → `lean`
@@ -672,7 +692,12 @@ Map response: 1 → lean, 2 → standard, 3 → enterprise, Enter → default.
 
 These artifacts can only be produced by spawning the actual review agents. Inline grep checks do not produce these files. The pre-commit hook verifies artifact existence — not manifest flags.
 
-Set `manifest.qualityProfile`.
+Set `manifest.qualityProfile`. Write manifest to disk immediately.
+
+**After setting the profile**, update the task list:
+1. Update the header task with the confirmed profile: `"═══ TaskPlex: {desc} ═══ Route: {route} | Profile: {profile} | Plan: {plan or 'none'}"`
+2. Update the Validation task to show the profile-specific agents: `"Validation ({profile}) — {agent list}"`
+3. Mark Step 5 complete in the Initialize task.
 
 ## Step 5b: Feature Branch Creation
 

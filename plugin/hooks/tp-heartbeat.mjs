@@ -161,6 +161,35 @@ async function main() {
       }
     }
 
+    // === Init Completeness Warnings ===
+    // Catch init steps that were skipped — warn early, not just at commit time
+    if (editedFile) {
+      const initWarnings = [];
+
+      if (!manifest.qualityProfile && !manifest._initQualityWarned) {
+        manifest._initQualityWarned = true;
+        initWarnings.push(
+          'WARNING: qualityProfile is null. The user has not selected lean/standard/enterprise. ' +
+          'This must be set during init Step 5 before planning begins. ' +
+          'The quality profile determines which validation agents run.'
+        );
+      }
+
+      const bcKeys = Object.keys(manifest.buildCommands || {});
+      if (bcKeys.length === 0 && manifest.phase !== 'init' && !manifest._initBuildCmdWarned) {
+        manifest._initBuildCmdWarned = true;
+        initWarnings.push(
+          'WARNING: buildCommands is empty. Project type detection (init Step 4) did not resolve build commands. ' +
+          'Build gate, self-verification, and test execution will not know what commands to run.'
+        );
+      }
+
+      if (initWarnings.length > 0) {
+        if (!manifest._initWarnings) manifest._initWarnings = [];
+        manifest._initWarnings.push(...initWarnings);
+      }
+    }
+
     // === Session Guardian: Scope & Ownership Checks (Phase 1) ===
     const guardianPhases = new Set(['implementation', 'qa']);
     if (editedFile && guardianPhases.has(manifest.phase)) {
@@ -410,6 +439,16 @@ function renderProgress(taskPath, manifest) {
         const validationStr = wave.validation ? ` | Validation: ${JSON.stringify(wave.validation)}` : '';
         lines.push(`- **${waveId}** (${wave.name || waveId}): ${wave.status || 'pending'} — ${fileCount} files${validationStr}`);
       }
+    }
+
+    // Init completeness warnings
+    if (manifest._initWarnings && manifest._initWarnings.length > 0) {
+      lines.push('');
+      lines.push('### Init Completeness');
+      for (const w of manifest._initWarnings) {
+        lines.push(`- ${w}`);
+      }
+      delete manifest._initWarnings;
     }
 
     // Progress note staleness warning

@@ -82,6 +82,18 @@ async function main() {
       // Allow writes to task artifacts (.claude-task/) — only block source code edits
       if (filePath && !normalizedPath.includes('.claude-task/') && isSourceFile(filePath)) {
 
+        // --- Quality profile gate: must be set before implementation ---
+        if (!manifest.qualityProfile) {
+          denyTool(
+            `TaskPlex quality profile gate: qualityProfile is not set.\n` +
+            `The quality profile (lean/standard/enterprise) must be confirmed by the user\n` +
+            `during initialization (Step 5) before implementation can begin.\n` +
+            `This determines which validation agents run and what artifacts are required.\n\n` +
+            `Set manifest.qualityProfile to "lean", "standard", or "enterprise".`
+          );
+          return;
+        }
+
         // --- Spec gate (all routes): spec.md must exist before implementation ---
         // A PRD is input, not a spec. The planning phase must produce spec.md.
         // Light route: brief.md is sufficient (no spec required).
