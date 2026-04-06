@@ -168,6 +168,19 @@ async function main() {
       const normalizedEdit = editedFile.replace(/\\/g, '/');
       const guardianWarnings = [];
 
+      // No-plan detection: if implementation is running without a spec/ownership file,
+      // the entire planning phase was likely skipped. Warn loudly — once per session.
+      if (!plannedFiles && isSourceFile(editedFile)) {
+        if (!manifest._guardianNoPlanWarned) {
+          manifest._guardianNoPlanWarned = true;
+          guardianWarnings.push(
+            'CRITICAL: Implementation is running with NO spec or file-ownership plan. ' +
+            'The planning phase may have been skipped. Guardian scope/ownership checks are disabled. ' +
+            'Verify that spec.md and file-ownership.json exist in the task directory.'
+          );
+        }
+      }
+
       // Scope check
       if (plannedFiles && !isPlannedFile(plannedFiles, normalizedEdit)) {
         // Only warn for source-ish files, not random config
