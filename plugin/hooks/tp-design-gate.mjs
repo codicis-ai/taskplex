@@ -174,7 +174,7 @@ async function main() {
             denyTool(
               `TaskPlex implementation gate: Source file edits blocked.\n` +
               `Execution mode: ${execMode} — the orchestrator must delegate to agents, not implement directly.\n` +
-              `Spawn implementation agents per the planning phase file.\n` +
+              `Spawn implementation agents per ~/.claude/taskplex/phases/planning.md.\n` +
               `Create TaskPlex-managed worktrees (git worktree add) for Blueprint agents.\n` +
               `After spawning, set manifest.implementationDelegated = true to unlock orchestrator edits.\n\n` +
               `If this is a post-agent fix (build-fixer, review fix), set manifest.implementationDelegated = true first.`
@@ -216,8 +216,29 @@ async function main() {
             }
           }
         }
+
+        // --- Guardian trigger gate: block if heartbeat detected deviations ---
+        // The heartbeat hook writes guardian-trigger.json when thresholds are crossed
+        // (3+ scope warnings, ownership conflicts, build loops). Instead of relying
+        // on the orchestrator to check the trigger (unreliable), this hook blocks
+        // the next source file write until the trigger is addressed.
+        const triggerPath = path.join(taskPath, 'guardian-trigger.json');
+        if (fs.existsSync(triggerPath) && !manifest.guardianOverride) {
+          try {
+            const trigger = JSON.parse(fs.readFileSync(triggerPath, 'utf8'));
+            denyTool(
+              `TaskPlex guardian alert: ${trigger.trigger} — ${trigger.reason}\n` +
+              `The session guardian detected a workflow deviation.\n\n` +
+              `To proceed, either:\n` +
+              `(a) Spawn session-guardian agent to analyze, then delete guardian-trigger.json\n` +
+              `(b) Set manifest.guardianOverride = true to acknowledge and proceed (logged as degradation)\n` +
+              `\nTrigger details: ${JSON.stringify(trigger)}`
+            );
+            return;
+          } catch { /* malformed trigger file, allow */ }
+        }
       }
-      // Past the implementation + wave gate checks — allow
+      // Past all implementation + QA gate checks — allow
       allowTool();
       return;
     }
