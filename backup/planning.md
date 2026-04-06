@@ -314,18 +314,39 @@ If triggered:
 
 After researcher returns: **present key findings inline** (don't just say "research complete"). Summarize the findings that affect the plan.
 
-### Phase A.2: Spec Critic (mandatory)
+### Phase A.2: Spec Critic (mandatory — bounded iteration, max 3 rounds)
 
-After planning agent returns, spawn a spec reviewer:
+After planning agent returns, spawn a spec reviewer in a feedback loop:
 
-> Spawn closure-agent (haiku) from ~/.claude/agents/core/closure-agent.md
-  Context: spec.md, sections.json, brief.md, CONVENTIONS.md — review spec + section assignments against brief requirements
-  Returns: "Verdict: APPROVED|NEEDS_REVISION"
+```
+round = 0
+LOOP:
+  Spawn closure-agent (haiku) from ~/.claude/agents/core/closure-agent.md
+    Context: spec.md, sections.json, brief.md, CONVENTIONS.md
+    If round > 0: include previous feedback + what was revised
+    Returns: "APPROVED" or "NEEDS_REVISION: {specific gaps}"
 
-Track in `manifest.iterationCounts.reviewRounds.specCritic`.
+  Track in manifest.iterationCounts.reviewRounds.specCritic
 
-- If NEEDS_REVISION: feed reviewer feedback back to planning agent (re-spawn with feedback context). Max 2 rounds per policy `limits.reviewResubmissions`.
-- If APPROVED: **set `manifest.criticCompleted = true`** and write manifest to disk. Then proceed to Pre-Implementation Acknowledgment.
+  IF APPROVED → set criticCompleted = true, EXIT loop
+  IF NEEDS_REVISION:
+    - Critic MUST list specific gaps: missing ACs, vague sections, missing file paths
+    - Feed specific feedback to planning agent (re-spawn with revision context)
+    - Planning agent revises spec.md addressing ONLY the identified gaps
+    - round++
+    - IF round >= 3 → EXIT loop with best-effort spec, log degradation
+    - IF same gaps persist across 2 rounds → EXIT early (not converging), log degradation
+    - GOTO LOOP
+```
+
+**Feedback must be specific**, not "needs more detail." The critic must identify:
+- Which ACs from brief.md have no corresponding spec section
+- Which spec sections lack file paths or implementation detail
+- Which sections have vague descriptions instead of concrete steps
+
+**After loop exits** (APPROVED or max rounds): **set `manifest.criticCompleted = true`** and write manifest to disk. Then proceed to Pre-Implementation Acknowledgment.
+
+**CRITICAL**: The `criticCompleted` flag is enforced by a hard gate in `tp-design-gate.mjs`. If this flag is not set, ALL source file writes during implementation will be blocked. The gate also detects review artifacts as a fallback, but setting the flag explicitly is the correct path.
 
 **CRITICAL**: The `criticCompleted` flag is enforced by a hard gate in `tp-design-gate.mjs`. If this flag is not set, ALL source file writes during implementation will be blocked. The gate also detects review artifacts as a fallback, but setting the flag explicitly is the correct path.
 

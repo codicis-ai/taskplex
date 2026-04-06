@@ -338,7 +338,33 @@ For UI journeys, capture screenshots at every state transition:
 ```
 
 Update manifest: increment `journeysTested`, `journeysPassed`.
-Update checklist: mark 4.5.3 complete.
+
+### Step 4.5.3b: Journey Coverage Check (bounded iteration, max 2 rounds)
+
+After the journey walkthrough, verify completeness against the spec:
+
+```
+round = 0
+LOOP:
+  1. Extract all journeys from spec (User Journeys section, or brief ACs)
+  2. Compare against journeys tested in Step 4.5.3
+  3. Identify gaps: journeys in spec that were NOT tested
+
+  IF no gaps → EXIT (coverage complete)
+  IF gaps found AND round < 2:
+    - Log: "Journey coverage gap: {journey name} not tested"
+    - Re-run Step 4.5.3 for ONLY the missing journeys
+    - round++
+    - GOTO LOOP
+  IF round >= 2 → EXIT with gaps logged as degradation
+```
+
+**What counts as "tested"**: The journey appears in the QA results with a status (Pass/Partial/Fail). A failed journey counts as tested — it's a known bug, not a coverage gap.
+
+**What counts as a gap**: A journey in the spec that has NO corresponding entry in the QA results. Not attempted at all.
+
+Update manifest: `manifest.qa.journeyCoverage = { total: N, tested: M, gaps: [names] }`
+Update checklist: mark 4.5.3b complete.
 
 ---
 
