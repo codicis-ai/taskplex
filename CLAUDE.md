@@ -177,7 +177,12 @@ start-task-sentinel.mjs
 - Session guardian Phase 2: trigger detection (scope-alarm, ownership-conflict, build-loop) → guardian-trigger.json → design gate BLOCKS until resolved (hook-enforced, not orchestrator-dependent)
 - TaskPlex-managed worktrees: Blueprint agents use `git worktree` (not runtime-specific isolation). Portable across all runtimes with git.
 - User-confirmed quality profile: lean/standard/enterprise selected during init, never auto-assigned silently. Determines validation rigor. Even autonomous mode requires user confirmation.
-- Validation artifact gate: pre-commit hook verifies actual review files exist (security.md, closure.md, code-quality.md, hardening/report.md, compliance.md) per quality profile. Inline greps cannot bypass.
+- Validation artifact gate: pre-commit hook verifies actual review files exist per quality profile. Includes conditional reviewers (database, e2e, user-workflow) triggered by file patterns. Enterprise blocks e2e SKIP verdict. Migration artifact required when SQL modified.
+- Bounded iteration loops: spec critic (3 rounds with specific feedback), journey coverage check (2 rounds), review quality protocol (evidence density check per reviewer, re-spawn if shallow)
+- Functional E2E testing: QA journey walkthrough fills forms, submits data, verifies DB state, chains multi-step workflows. E2E reviewer does the same independently.
+- Migration enforcement: QA applies migrations before smoke test, writes migration-applied.json artifact, pre-commit verifies.
+- Database reviewer with Bash access for EXPLAIN ANALYZE and index verification.
+- Dev server startup step in QA (before smoke test, UI/API types).
 - Claude Code plugin: packaged in `plugin/` directory (codicis-ai/taskplex). Skills, agents, hooks, MCP. All paths use `${CLAUDE_PLUGIN_ROOT}`.
 
 ### Designed but Not Built

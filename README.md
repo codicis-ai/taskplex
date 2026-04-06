@@ -197,11 +197,122 @@ This repository (`codicis-ai/taskplex`) contains design, documentation, plugin, 
 | `codicis-ai/taskwright` | TaskWright — AI personal assistant |
 | `codicis-ai/memwright` | Memwright — memory desktop application |
 
+## The Full Workflow (what happens)
+
+```
+User: /tp add event engine --blueprint
+
+PHASE 1: INITIALIZATION
+  ├─ Parse task, select route (Light/Standard/Blueprint)
+  ├─ User confirms quality profile (lean/standard/enterprise)
+  ├─ Create manifest, task list, session file
+  ├─ Load context (INTENT.md, CONVENTIONS.md, memplex if available)
+  └─ Detect project type, resolve build commands
+
+PHASE 2: DESIGN
+  ├─ Sub-phase A: Convention scan + user confirmation
+  ├─ Sub-phase B: Research & discovery (Blueprint — references, problem space)
+  ├─ Sub-phase C: Product context (Blueprint — profiles, journeys, JTBD)
+  └─ Sub-phase D: Intent exploration + approach selection + section approval
+      └─ Writes: brief.md, intent.md (guardrails for architect)
+
+PHASE 3: PLANNING
+  ├─ Planning agent writes spec.md (with intent guardrails)
+  ├─ Spec critic reviews (bounded: max 3 rounds, specific feedback)
+  ├─ User reviews and approves plan
+  ├─ Verification agent writes test plan (pre-committed checks)
+  └─ Task list refined with specific workers
+
+PHASE 4: IMPLEMENTATION
+  ├─ Create worktrees (git worktree add per worker)
+  ├─ Spawn parallel workers (Blueprint: in worktrees, Standard: file ownership)
+  ├─ Each worker: apply code → self-verify (typecheck/lint) → return
+  ├─ Coherence check per worker (does output match brief?)
+  ├─ Merge worktree branches
+  └─ Build gate (typecheck + lint + tests on merged result)
+
+PHASE 5: QA
+  ├─ Apply migrations (if SQL files modified) → write migration-applied.json
+  ├─ Start dev server (UI/API types)
+  ├─ Smoke test (does it even start?)
+  ├─ Journey walkthrough — functional E2E with test data:
+  │   ├─ Setup: generate test data, ensure clean state
+  │   ├─ Execute: fill forms, submit, verify DB state, chain steps
+  │   └─ Cleanup: remove test data
+  ├─ Journey coverage check (bounded: max 2 rounds — all spec journeys tested?)
+  ├─ Adversarial verification (verification agent tries to break it)
+  └─ Bug fix loop (context-preserving, max 3 rounds, verification re-checks)
+
+PHASE 6: VALIDATION
+  ├─ Artifact validation (all required files exist)
+  ├─ Traceability (ACs → spec → code → tests)
+  ├─ Build validation (typecheck + lint + tests)
+  ├─ Security review → evidence quality check → re-run if thin
+  ├─ Closure verification → evidence quality check
+  ├─ Code review → evidence quality check
+  ├─ Conditional reviewers (database, e2e, user-workflow — if file patterns match)
+  ├─ Hardening (standard: advisory, enterprise: blocking)
+  └─ Compliance (final gate — audits all reviews + process)
+
+PHASE 7: COMPLETION
+  ├─ Memplex knowledge persistence (file couplings, patterns, decisions)
+  ├─ Skill evolution (detect signals, write evolutions.json)
+  ├─ Git commit (blocked until all artifacts exist)
+  └─ PR creation + task summary
+```
+
+## The Enforcement Layer (what prevents shortcuts)
+
+Every enforcement is **hook-based** (fires automatically on every tool call) and **artifact-based** (checks file existence, not manifest flags). The agent cannot bypass enforcement by setting flags.
+
+### Pre-Implementation Gates (tp-design-gate.mjs — PreToolUse on Edit/Write)
+
+| Gate | Checks | Blocks If |
+|------|--------|-----------|
+| **Spec gate** | `spec.md` exists in task dir | No spec = no implementation (Light: brief.md) |
+| **Critic gate** | Review files exist in `reviews/` | No review artifacts = no implementation |
+| **Blueprint gate** | `architecture.md` + `file-ownership.json` exist | Missing architecture = no implementation |
+| **Implementation gate** | `manifest.implementationDelegated` | Orchestrator can't code inline |
+| **Wave gate** | Previous wave completed + validated | Can't skip ahead |
+| **Guardian trigger gate** | `guardian-trigger.json` doesn't exist | Must resolve scope/ownership deviations |
+
+### During Implementation (tp-heartbeat.mjs — PostToolUse on Edit/Write)
+
+| Check | What It Does |
+|-------|-------------|
+| **Scope check** | Warns when files edited outside the spec's file map |
+| **Ownership check** | Warns when multiple agents edit the same file |
+| **File count check** | Warns when modified files exceed plan by >50% |
+| **No-plan detection** | CRITICAL warning if implementation runs without spec |
+| **Observation log** | Append-only record of every edit (timestamp, file, owner, status) |
+| **Trigger detection** | Writes guardian-trigger.json at thresholds (3+ scope, 1+ ownership, 3+ build loops) |
+
+### Pre-Commit Gates (tp-pre-commit.mjs — PreToolUse on Bash)
+
+| Gate | Checks | Blocks If |
+|------|--------|-----------|
+| **Validation gate** | `validation-gate.json` exists and passed | No validation = no commit |
+| **Mandatory reviews** | `security.md` + `closure.md` + `code-quality.md` exist | Missing review files = no commit |
+| **Enterprise reviews** | + `hardening/report.md` + `compliance.md` | Enterprise needs 5+ review files |
+| **Conditional reviews** | `database.md` if SQL modified, `e2e.md` if UI modified, `user-workflow.md` if routes modified | File-pattern-triggered reviews must run |
+| **E2E SKIP check** | Enterprise: e2e.md verdict != SKIP | Enterprise requires actual browser testing |
+| **Migration artifact** | `migration-applied.json` if SQL files modified | Migrations must be applied before commit |
+
+### Quality Feedback Loops
+
+| Loop | Where | What It Catches | Max Rounds |
+|------|-------|----------------|------------|
+| Spec critic | Planning | Vague specs, missing ACs | 3 |
+| Journey coverage | QA | Untested journeys from spec | 2 |
+| Review quality | Validation | Shallow "PASS" reports with no evidence | 1 re-run |
+| Build fix | Implementation + QA | Compilation/test failures | 3 |
+| Bug fix | QA | Bugs found by verification agent | 3 |
+
 ## Status
 
-**Built and active**: Claude Code plugin (`plugin/`), 7 skills, 9 hooks, 6 phase files, 8 contracts, 23 agents, artifact-based enforcement gates (spec, critic, blueprint, validation), session guardian Phase 1, user-confirmed quality profiles, validation artifact gate, TaskPlex-managed worktrees, code intelligence (LSP + ast-grep), production impact assessment, context-preserving QA fix loop.
+**Built and active**: Claude Code plugin (`plugin/`), 7 skills, 9 hooks, 6 phase files, 8 contracts, 23 agents, full artifact-based enforcement (spec/critic/blueprint/validation/conditional/migration gates), session guardian (scope/ownership/trigger blocking), user-confirmed quality profiles, bounded iteration (spec critic/journey coverage/review quality), functional E2E testing with test data, TaskPlex-managed worktrees, code intelligence (LSP + ast-grep), production impact assessment.
 
-**Designed, not yet built**: Cursor 3 plugin (PRD complete, spike pending), /plan merge into /tp, multi-runtime distribution (6 more runtimes), session guardian Phases 2-3, Pi plugin, board architecture, memplex HTTP API.
+**Designed, not yet built**: Cursor 3 plugin (PRD complete), /plan merge into /tp (design complete), Haiku worker granularity (PRD complete), multi-runtime distribution (6 runtimes), session guardian Phase 3 (background agent), Pi plugin, memplex HTTP API.
 
 ## License
 
