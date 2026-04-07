@@ -467,17 +467,107 @@ Significant cost increase. The value proposition: **reliability, not cost**. Eve
 - `light.yaml` — Minimal pipeline
 - Variable resolution ($TASK_ID, $QUALITY_PROFILE, etc.)
 
-### Phase 3: Agent Team Integration
-- Configure team sessions with teammate definitions
-- Map agent .md files to teammate types
-- Handle team lifecycle within pipeline steps
-- Agent team hooks (TaskCompleted, TeammateIdle) for quality enforcement
-
-### Phase 4: Multi-Runtime Support
+### Phase 3: Multi-Runtime Support + Per-Step Runtime Mixing
 - Abstract AI CLI interaction (Claude, Gemini, Codex, Copilot)
-- Runtime-specific readiness detection
-- Runtime-specific prompt delivery
-- Runtime-specific output parsing
+- Runtime-specific readiness detection, prompt delivery, output parsing
+- Per-step `agent_cli` field in YAML — different runtimes in the same pipeline
+- Agent definition adapter per runtime (translate frontmatter to runtime format)
+
+### Phase 4 (optional): Agent Teams Integration
+- If Agent Teams stabilizes, allow sessions to optionally use teams for internal parallelism
+- Not a dependency — baseline works without it
+
+## Multi-Runtime Mixing
+
+The pipeline engine doesn't care which AI CLI runs in each tmux session. Each step can specify its own runtime:
+
+```yaml
+steps:
+  - name: planning
+    agent_cli: claude          # Claude Code (Opus for architect-level work)
+    agent: planning-agent
+    
+  - name: critic
+    agent_cli: codex           # Codex (different perspective on the spec)
+    agent: strategic-critic
+    
+  - name: worker-1
+    agent_cli: claude          # Claude Code (Sonnet for implementation)
+    agent: implementation-agent
+    worktree: true
+    
+  - name: security-review
+    agent_cli: gemini          # Gemini CLI (strong on security analysis)
+    agent: security-reviewer
+    
+  - name: code-review
+    agent_cli: codex           # Codex (strong on code quality)
+    agent: code-reviewer
+    
+  - name: compliance
+    agent_cli: claude          # Claude Code (needs full cross-validation)
+    agent: compliance-agent
+```
+
+The pipeline engine spawns each with the appropriate CLI:
+```bash
+tmux new-session -d -s "tp-critic"    "codex -p '$(cat .claude-task/TASK-123/critic-prompt.md)'"
+tmux new-session -d -s "tp-security"  "gemini -p '$(cat .claude-task/TASK-123/security-prompt.md)'"
+tmux new-session -d -s "tp-worker-1"  "claude --agent taskplex:implementation-agent -p '...'"
+```
+
+### Why Mix Runtimes?
+
+**Cost optimization**: Route expensive thinking (architect, planning) to Claude Opus. Route cheap review (closure, compliance) to Gemini Flash or Codex.
+
+**Diverse perspectives**: Different models catch different issues. A Codex code reviewer and a Claude security reviewer see different things.
+
+**Subscription leverage**: Use what you're paying for. If you have Claude, Codex, and Gemini subscriptions, all three work in parallel.
+
+**No vendor lock-in**: The pipeline runs if any one CLI is available. If Codex is down, the pipeline falls back to Claude for that step.
+
+### Runtime Adapter Layer
+
+Agent definitions use Claude Code frontmatter (`model: sonnet`, `disallowedTools: [Edit]`). Other runtimes have different formats. The pipeline engine includes a thin adapter per runtime:
+
+| Aspect | Claude Code | Codex | Gemini CLI |
+|--------|-----------|-------|------------|
+| Launch | `claude --agent {name} -p "{prompt}"` | `codex -p "{prompt}"` | `gemini -p "{prompt}"` |
+| Agent definition | `--agent` loads .md frontmatter | Prompt includes instructions | Prompt includes instructions |
+| Tool restrictions | Frontmatter `disallowedTools` | Codex sandbox policy | Gemini extension policy |
+| Model selection | Frontmatter `model: sonnet` | `--model gpt-4.1` | `--model gemini-3-pro` |
+
+For non-Claude runtimes, the adapter:
+1. Reads the agent `.md` file
+2. Extracts the markdown body (instructions) — portable across all runtimes
+3. Translates frontmatter (model, tools) to runtime-specific flags
+4. Constructs the launch command
+
+The agent instructions are the same everywhere. Only the launch mechanics differ.
+
+### Feedback Loop to Windows Terminal
+
+When pipeline sessions produce results (reviews, bugs, queries), the user sees them in the Windows terminal:
+
+```
+$ tp queries
+
+[FROM: codex critic] Spec section 3 lacks error handling detail. 
+  Recommend adding error recovery flow for webhook HMAC validation failure.
+
+[FROM: gemini security] OAuth redirect URL at settings/channels/page.tsx:36
+  is not validated. User-supplied URL could redirect to malicious site.
+
+[FROM: codex code-review] 3 must-fix items:
+  1. window.location.href → router.push() in ContextPanel.tsx
+  2. EntityBrowser uses raw fetch, not TanStack Query
+  3. MeetingRoom silently swallows mic permission denial
+
+$ tp respond critic "Good catch — add error handling to the spec"
+$ tp respond security "Flag as must-fix — add URL validation"
+```
+
+The user reads feedback from multiple runtimes in one place, responds once, and the pipeline relays to the appropriate session. The user then makes changes in their Windows Claude Code session with the full feedback context.
 
 ## Relationship to Current Architecture
 
