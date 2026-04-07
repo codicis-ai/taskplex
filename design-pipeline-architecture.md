@@ -963,16 +963,17 @@ tp config
 
 The CLI is the primary interface. The app adds: visual kanban, click-to-attach, memplex integration, and persistent history across tasks.
 
-## Open Questions
+## Resolved Decisions
 
-1. **Cost at scale.** Blueprint: ~$12-20 per task (11-19 sessions, each focused and short). Standard: ~$6-10. Light: ~$3-5. Each session runs 2-10 minutes with a single focused agent — cheaper per session than the current model where one session runs 30-60 minutes with context bloat.
-
-2. **Windows support.** Confirmed: WSL works. Claude Code installs and runs in WSL Ubuntu. Pipeline engine spawns tmux sessions in WSL, reads/writes to `/mnt/c/` (same Windows filesystem). Main Claude Code session runs in Windows terminal, pipeline runs in WSL.
-
-3. **Pipeline engine language.** DevPit uses Go (single binary, fast, good tmux support). Alternative: Node.js (same ecosystem as hooks). Recommendation: Go — the pipeline engine is a system tool, not a plugin. Single binary distribution via npm package or homebrew.
-
-4. **How does the original session know the pipeline is done?** Options: (a) pipeline engine writes `.claude-task/{taskId}/pipeline-complete.json` — the user's Claude Code session checks for it, (b) user runs `/taskplex:complete` manually to resume, (c) both — file written for automation, manual command for immediate resumption.
-
-5. **Distribution.** The pipeline engine is a binary. Options: bundled in the plugin's `bin/` directory (Claude Code adds it to PATH), npm package (`npx tp`), or standalone install (`brew install tp` / `curl install`).
-
-6. **Agent Teams as future upgrade.** The architecture doesn't preclude Agent Teams — if they stabilize, a session could optionally use one for internal parallelism. But the baseline works without them. No dependency on experimental features.
+| # | Question | Decision |
+|---|----------|----------|
+| 1 | **Cost at scale** | Acceptable. Blueprint ~$12-20, Standard ~$6-10, Light ~$3-5. Cheaper per session than one long session with context bloat. Users self-select via route. |
+| 2 | **Windows support** | WSL confirmed working. Pipeline runs in WSL, main session in Windows terminal, shared filesystem via `/mnt/c/`. |
+| 3 | **Pipeline engine language** | **Go.** Single binary, no runtime dependency, fast, good tmux support. DevPit proves the approach. Hooks stay in Node.js (inside Claude Code). Pipeline engine runs outside. |
+| 4 | **Pipeline completion signal** | **Both.** Pipeline writes `pipeline-complete.json`. User resumes with `/taskplex:complete` when ready. File for future automation. No polling. |
+| 5 | **Distribution** | Plugin `bin/` directory for Claude Code users (automatic with plugin install). Standalone install script (`curl \| bash`) for everyone else. npm fallback. Homebrew later. |
+| 6 | **Agent Teams** | Parked as optional future upgrade. Architecture supports it. Not a dependency. |
+| 7 | **`.claude-task/` naming** | Keep for now. Rename to `.taskplex/` in major version (2.0) with migration script. |
+| 8 | **Headless / CI mode** | Add `--headless` flag later. Design phase auto-accepts defaults. Build interactive-first. |
+| 9 | **User query timeout** | Configurable, default 10 minutes. On timeout: session marks as blocked, pipeline moves to next independent step. No hanging. |
+| 10 | **Git ownership** | Pipeline engine owns git during execution. Workers commit in worktrees only. Pipeline engine merges. No session touches main. Completion step does final commit. |
