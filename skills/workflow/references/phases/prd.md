@@ -171,7 +171,7 @@ For each wave (0, 1, 2, ...):
    - Emit trace span: `feature-start`
    - **Feature attempt tracking (F2)**: Check `prd-state.json` feature attempt count. In autonomous mode, max per policy `limits.prdFeatureAttemptsAutonomous`. If at limit, mark `blocked:session-limit` and skip to next feature.
    - **Implementation dispatch (F1)**: Each feature is implemented via a one-shot implementation agent:
-     1. Assemble context per `${CLAUDE_PLUGIN_ROOT}/agents/context-assembly.md` using PRD feature requirements + Layer 0-3
+     1. Assemble context per `~/.claude/agents/context-assembly.md` using PRD feature requirements + Layer 0-3
      2. Pre-hydrate: files from feature spec, file_intelligence per primary file (if cm available)
      3. If Interactive: `AskUserQuestion` with pre-filled context — "Feature F{N}: {title}. Requirements: {summary}. Proceed?"
      4. If Autonomous: skip confirmation, proceed directly

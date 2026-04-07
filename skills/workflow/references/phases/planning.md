@@ -4,7 +4,7 @@
 <!-- v4: Added progress visibility, inline artifact presentation, pre-spawn status messages -->
 <!-- v5: Collapsed to 3 routes (Light/Standard/Blueprint). Standard absorbs Team (multi-agent + mandatory critic). -->
 
-**Policy reference**: `~/.claude/taskplex/policy.json` for iteration limits.
+**Policy reference**: `${CLAUDE_PLUGIN_ROOT}/skills/workflow/references/policy.json` for iteration limits.
 
 ## ⚠️ User Visibility Rules (HARD RULE — all routes)
 
@@ -51,7 +51,7 @@ Review each section — any changes?
 
 This is ~20-30 lines for a typical architecture. Enough to review and give feedback. The full artifact is on disk for reference; the chat shows the working summary.
 
-**Manifest schema**: `~/.claude/taskplex/manifest-schema.json` — field definitions.
+**Manifest schema**: `${CLAUDE_PLUGIN_ROOT}/skills/workflow/references/manifest-schema.json` — field definitions.
 
 ## Execution Readiness Gates (AUTHORITATIVE)
 
@@ -114,7 +114,7 @@ If the architect determines the scope warrants wave decomposition: read the "Blu
 - All independent workers dispatch in **one message** using parallel tool calls
 - Each worker MUST use `isolation: "worktree"` (Blueprint) or shared workspace with file ownership (Standard)
 - After all workers return, merge and proceed to build check → QA → validation — no pause
-- **Between wave dispatches** (Blueprint): Check `.claude-task/{taskId}/guardian-trigger.json`. If it exists, spawn session-guardian agent (haiku, read-only) from `~/.claude/agents/utility/session-guardian.md` with the trigger context + last 10 lines from `observations.md`. Write the guardian's analysis to `guardian-alerts.md`. Delete the trigger file. Urgent alerts → present to user. Warnings → factor into next dispatch.
+- **Between wave dispatches** (Blueprint): Check `.claude-task/{taskId}/guardian-trigger.json`. If it exists, spawn session-guardian agent (haiku, read-only) from `${CLAUDE_PLUGIN_ROOT}/agents/session-guardian.md` with the trigger context + last 10 lines from `observations.md`. Write the guardian's analysis to `guardian-alerts.md`. Delete the trigger file. Urgent alerts → present to user. Warnings → factor into next dispatch.
 
 The user trusted the plan when they approved it. Implementation executes that plan. The next user interaction is at completion (git/PR) or if something breaks.
 
@@ -250,7 +250,7 @@ TaskCreate: "Build gate — typecheck + lint"
 
 2. **Standard profile**: Spawn implementation agent.
    **Before spawning**: Run Memplex Context Assembly for the spec's primary files.
-   > Spawn implementation-agent (sonnet) from ~/.claude/agents/core/implementation-agent.md
+   > Spawn implementation-agent (sonnet) from ${CLAUDE_PLUGIN_ROOT}/agents/implementation-agent.md
      Context: "Read your spec at .claude-task/{taskId}/spec.md. Implement the plan." + Known Context block (if memplex available)
      max_turns: 25
      Writes: source code changes, deferred items
@@ -270,7 +270,7 @@ TaskCreate: "Build gate — typecheck + lint"
 
 **Git notes**: No incremental commits. One commit at completion.
 
-7. **Proceed to QA**: Read `~/.claude/taskplex/phases/qa.md`
+7. **Proceed to QA**: Read `${CLAUDE_PLUGIN_ROOT}/skills/workflow/references/phases/qa.md`
 
 ---
 
@@ -286,7 +286,7 @@ TaskCreate: "Build gate — typecheck + lint"
 
 Spawn the planning agent in multi-agent mode. The planning agent identifies independent sections and writes file ownership.
 
-> Spawn planning-agent (sonnet) from ~/.claude/agents/core/planning-agent.md
+> Spawn planning-agent (sonnet) from ${CLAUDE_PLUGIN_ROOT}/agents/planning-agent.md
   Context: brief.md path, taskId, designDepth, qualityProfile, mode: "multi-agent"
   Writes: .claude-task/{taskId}/spec.md, .claude-task/{taskId}/sections.json, .claude-task/{taskId}/file-ownership.json, .claude-task/{taskId}/conventions-snapshot.json
   Returns: "PLANNING COMPLETE. Spec: {path}. Sections: {N}. Files affected: {N}. Key decisions: {bullets}"
@@ -307,7 +307,7 @@ Set `manifest.planFile = "spec.md"`.
 If triggered:
 > "Spawning researcher to investigate {topics}. This typically takes 2-5 minutes."
 
-> Spawn researcher (sonnet) from ~/.claude/agents/core/researcher.md
+> Spawn researcher (sonnet) from ${CLAUDE_PLUGIN_ROOT}/agents/researcher.md
   Context: brief.md, spec.md, package.json deps, CONVENTIONS.md, research questions
   Writes: .claude-task/{taskId}/research/*.md
   Returns: "RESEARCH COMPLETE. Questions: N. Key findings: {bullets}"
@@ -321,7 +321,7 @@ After planning agent returns, spawn a spec reviewer in a feedback loop:
 ```
 round = 0
 LOOP:
-  Spawn closure-agent (haiku) from ~/.claude/agents/core/closure-agent.md
+  Spawn closure-agent (haiku) from ${CLAUDE_PLUGIN_ROOT}/agents/closure-agent.md
     Context: spec.md, sections.json, brief.md, CONVENTIONS.md
     If round > 0: include previous feedback + what was revised
     Returns: "APPROVED" or "NEEDS_REVISION: {specific gaps}"
@@ -481,7 +481,7 @@ TaskUpdate: "Validation" → "Validation — {profile} profile ({N} gates)"
 4. Run straight through: dispatch all agents → merge → build check → tactical critic → QA → validation
 5. The `tp-design-gate` hook blocks orchestrator source edits until `manifest.implementationDelegated = true`
 
-**Handoff contract**: `~/.claude/taskplex/handoff-contract.md` — structured format for all agent transitions.
+**Handoff contract**: `${CLAUDE_PLUGIN_ROOT}/skills/workflow/references/handoff-contract.md` — structured format for all agent transitions.
 
 1. **Read sections.json** for independent section assignments.
 
@@ -516,7 +516,7 @@ TaskUpdate: "Validation" → "Validation — {profile} profile ({N} gates)"
 
    **Before spawning each agent**: Run Memplex Context Assembly for that section's primary files.
 
-   > Spawn implementation-agent (sonnet) from ~/.claude/agents/core/implementation-agent.md
+   > Spawn implementation-agent (sonnet) from ${CLAUDE_PLUGIN_ROOT}/agents/implementation-agent.md
      Context: "Read spec at .claude-task/{taskId}/spec.md, section: {section-id}. Read file-ownership at .claude-task/{taskId}/file-ownership.json." + Known Context block (if memplex available)
      max_turns: 25
      Writes: source code changes, deferred items, workers/{workerId}.json
@@ -545,7 +545,7 @@ TaskUpdate: "Validation" → "Validation — {profile} profile ({N} gates)"
 
 6. **Update documentation** (same rules as before — update docs based on modified files).
 
-7. **Proceed to QA → Full Validation**: Read `~/.claude/taskplex/phases/qa.md`, then `~/.claude/taskplex/phases/validation.md`. Full validation runs once after all workers complete and build gate passes.
+7. **Proceed to QA → Full Validation**: Read `${CLAUDE_PLUGIN_ROOT}/skills/workflow/references/phases/qa.md`, then `${CLAUDE_PLUGIN_ROOT}/skills/workflow/references/phases/validation.md`. Full validation runs once after all workers complete and build gate passes.
 
 ---
 
@@ -558,7 +558,7 @@ After implementation completes and build gate passes, spawn a tactical critic ag
 - Returns: APPROVED or REVISE with specific file-level feedback
 - If REVISE: orchestrator fixes issues, re-runs critic (max 2 cycles)
 
-> Spawn tactical-critic (sonnet) from ~/.claude/agents/core/tactical-critic.md
+> Spawn tactical-critic (sonnet) from ${CLAUDE_PLUGIN_ROOT}/agents/tactical-critic.md
   Context: spec.md, manifest.modifiedFiles, brief.md, CONVENTIONS.md
   Writes: .claude-task/{taskId}/reviews/tactical-review.md
   Returns: "Verdict: APPROVED|REVISE. {N} issues found."
@@ -674,7 +674,7 @@ Failure to update these fields means recovery after compaction will have stale s
 
    **Before spawning**: Run Memplex Context Assembly for the target area files from brief.md.
 
-   > Spawn architect (opus) from ~/.claude/agents/core/architect.md
+   > Spawn architect (opus) from ${CLAUDE_PLUGIN_ROOT}/agents/architect.md
      Context: brief.md, architecture decisions, CONVENTIONS.md, CLAUDE.md, .schema/ docs, qualityProfile + Known Context block (if memplex available)
      Writes: .claude-task/{taskId}/architecture.md, .claude-task/{taskId}/spec.md, .claude-task/{taskId}/file-ownership.json, .claude-task/{taskId}/workers/worker-{n}-brief.md
      Returns: "Architecture designed. {N} components, {M} files affected."
@@ -727,7 +727,7 @@ Failure to update these fields means recovery after compaction will have stale s
 **Research triggers**: New dependency, external API, version migration, unfamiliar pattern, explicit request.
 
 If triggered:
-> Spawn researcher (sonnet) from ~/.claude/agents/core/researcher.md
+> Spawn researcher (sonnet) from ${CLAUDE_PLUGIN_ROOT}/agents/researcher.md
   Context: brief.md, package.json deps, CONVENTIONS.md, research questions
   Writes: .claude-task/{taskId}/research/*.md
   Returns: "RESEARCH COMPLETE. Questions: N. Key findings: {bullets}"
@@ -831,7 +831,7 @@ git branch -D tp-worker-{taskId}-{n}
    **Before spawning**: Run Memplex Context Assembly for each worker's primary files (from worker brief).
 
    Each agent:
-   > Spawn implementation-agent (sonnet) from ~/.claude/agents/core/implementation-agent.md
+   > Spawn implementation-agent (sonnet) from ${CLAUDE_PLUGIN_ROOT}/agents/implementation-agent.md
      Context: "Your working directory is .claude-task/{taskId}/worktrees/worker-{n}/. Read your brief at {project-root}/.claude-task/{taskId}/workers/worker-{n}-brief.md. Implement the plan. Commit your changes before returning." + Known Context block (if memplex available)
      max_turns: 30
      Writes: source code changes in worktree, deferred items
@@ -850,7 +850,7 @@ git branch -D tp-worker-{taskId}-{n}
 
 6. **Update documentation** (same as Standard route step 6 — update docs based on modified files).
 
-7. **Proceed to QA → Full Validation**: Read `~/.claude/taskplex/phases/qa.md`, then `~/.claude/taskplex/phases/validation.md`. Full validation (security, closure, code review, hardening, compliance) runs once after all workers are merged and build gate passes.
+7. **Proceed to QA → Full Validation**: Read `${CLAUDE_PLUGIN_ROOT}/skills/workflow/references/phases/qa.md`, then `${CLAUDE_PLUGIN_ROOT}/skills/workflow/references/phases/validation.md`. Full validation (security, closure, code review, hardening, compliance) runs once after all workers are merged and build gate passes.
 
 ---
 
@@ -866,7 +866,7 @@ Initiative mode is Blueprint at scale — the same opus architect + critics + mu
 
 Run the Product Brief agent to formalize the approved brief into initiative format:
 
-> Read ~/.claude/agents/core/product-brief.md
+> Read ${CLAUDE_PLUGIN_ROOT}/agents/product-brief.md
   Mode: Initiative (full brief with component-grouped user stories)
 
 The product-brief agent:
@@ -881,7 +881,7 @@ After brief is confirmed, set `manifest.designInteraction.prdBriefConfirmed = tr
 
 **→ Set `manifest.designPhase = "prd-bootstrap"` before spawning.**
 
-> Spawn prd-bootstrap (opus) from ~/.claude/agents/core/prd-bootstrap.md
+> Spawn prd-bootstrap (opus) from ${CLAUDE_PLUGIN_ROOT}/agents/prd-bootstrap.md
   Context: user description, product brief, INTENT.md, CONVENTIONS.md, CLAUDE.md, .schema/ overviews
   Writes: .claude-task/PRD-{timestamp}/prd.md, .claude-task/PRD-{timestamp}/prd-state.json
   Returns: "PRD bootstrapped: {N} features across {W} waves"
@@ -890,7 +890,7 @@ After brief is confirmed, set `manifest.designInteraction.prdBriefConfirmed = tr
 
 **→ Set `manifest.designPhase = "prd-critic"` before spawning.**
 
-> Spawn strategic-critic (opus) from ~/.claude/agents/core/strategic-critic.md
+> Spawn strategic-critic (opus) from ${CLAUDE_PLUGIN_ROOT}/agents/strategic-critic.md
   Context: prd.md, INTENT.md, CONVENTIONS.md — review the PRD as a whole
   Writes: .claude-task/PRD-{id}/strategic-review.md
   Returns: "Verdict: APPROVED|NEEDS_REVISION"
@@ -901,7 +901,7 @@ After brief is confirmed, set `manifest.designInteraction.prdBriefConfirmed = tr
 
 ### Initiative Phase 2: Tactical Critic Reviews
 
-> Spawn tactical-critic (sonnet) from ~/.claude/agents/core/tactical-critic.md
+> Spawn tactical-critic (sonnet) from ${CLAUDE_PLUGIN_ROOT}/agents/tactical-critic.md
   Context: prd.md, CONVENTIONS.md, .schema/ docs — review per-feature specs
   Writes: .claude-task/PRD-{id}/tactical-review.md
   Returns: "Verdict: APPROVED|NEEDS_REVISION"
@@ -1045,7 +1045,7 @@ For each wave:
    - Check attempt count (max per policy `limits.prdFeatureAttemptsAutonomous` in autonomous mode)
    - Create worktree: `git worktree add .claude-task/{taskId}/worktrees/{feature-slug} -b tp-worker-{taskId}-{feature-slug}`
    - Each feature gets architect-level worker brief + implementation agent dispatch
-   > Spawn implementation-agent (sonnet) from ~/.claude/agents/core/implementation-agent.md
+   > Spawn implementation-agent (sonnet) from ${CLAUDE_PLUGIN_ROOT}/agents/implementation-agent.md
      Context: "Your working directory is .claude-task/{taskId}/worktrees/{feature-slug}/." + assembled payload, feature requirements, max_turns: 30
      Writes: source code changes in worktree, deferred items
      Returns: "STATUS: completed|blocked. FILES_MODIFIED: [...]. BUILD: pass|fail."
@@ -1085,7 +1085,7 @@ After the last wave completes and passes validation:
 4. **Cross-wave integration test**: Run full test suite one final time
 5. **Full Validation Pipeline** — runs ONCE after all waves complete. This is where
    security review, closure, code review, hardening, and compliance run.
-   See `~/.claude/taskplex/phases/validation.md`.
+   See `${CLAUDE_PLUGIN_ROOT}/skills/workflow/references/phases/validation.md`.
 6. Generate completion report
 7. If git available: create comprehensive PR covering the entire initiative
 8. Present to user
@@ -1173,5 +1173,5 @@ If `manifest.planSource.origin === "external-file"`: the task has an external PR
 
 ## Next
 
-Read the QA phase: `~/.claude/taskplex/phases/qa.md`
-After QA, read the validation pipeline: `~/.claude/taskplex/phases/validation.md`
+Read the QA phase: `${CLAUDE_PLUGIN_ROOT}/skills/workflow/references/phases/qa.md`
+After QA, read the validation pipeline: `${CLAUDE_PLUGIN_ROOT}/skills/workflow/references/phases/validation.md`

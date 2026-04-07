@@ -60,7 +60,7 @@ async function main() {
           '',
           'MANDATORY: Your FIRST action must be:',
           '',
-          '  Read the initialization phase file (from the taskplex workflow skill)',
+          '  Read("~/.claude/taskplex/phases/init.md")',
           '',
           'Read it IN FULL, then follow Steps 0-5 in exact order.',
           '',
@@ -76,9 +76,9 @@ async function main() {
           '- tp-pre-commit: blocks commits without validation',
           '',
           'Phase files (read in sequence as you progress):',
-          '1. Initialization phase file (NOW)',
-          '2. Planning phase file (after init)',
-          '3. Validation phase file (after implementation)',
+          '1. ~/.claude/taskplex/phases/init.md (NOW)',
+          '2. ~/.claude/taskplex/phases/planning.md (after init)',
+          '3. ~/.claude/taskplex/phases/validation.md (after implementation)',
           '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
         ].join('\n')
       }));

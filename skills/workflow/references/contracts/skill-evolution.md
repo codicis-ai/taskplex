@@ -210,7 +210,7 @@ This block is injected into the orchestrator's context when the skill is activat
 
 User-initiated command that merges active evolutions into the skill's source file.
 
-**File**: `the solidify skill`
+**File**: `~/.claude/commands/solidify.md`
 
 **Usage**: `/solidify [skill-name]` or `/solidify --all`
 
@@ -245,7 +245,7 @@ Step 11.5: Skill Evolution (if signals detected)
 1. Run signal detection against manifest (see skill-evolution.md)
 2. If signals exceed threshold:
    a. Determine active skill from manifest.workflow
-   b. Read the skill's SKILL.md file (or SKILL.md)
+   b. Read ~/.claude/skills/{skill}/skill.md (or SKILL.md)
    c. Read ${CLAUDE_PLUGIN_DATA}/evolutions/{skill}.json (if exists)
    d. Call evolution generator (LLM) with signal + skill + existing evolutions
    e. Append new evolution to evolutions.json

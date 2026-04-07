@@ -186,7 +186,7 @@ async function main() {
             denyTool(
               `TaskPlex implementation gate: Source file edits blocked.\n` +
               `Execution mode: ${execMode} — the orchestrator must delegate to agents, not implement directly.\n` +
-              `Spawn implementation agents per ~/.claude/taskplex/phases/planning.md.\n` +
+              `Spawn implementation agents per the planning phase file.\n` +
               `Create TaskPlex-managed worktrees (git worktree add) for Blueprint agents.\n` +
               `After spawning, set manifest.implementationDelegated = true to unlock orchestrator edits.\n\n` +
               `If this is a post-agent fix (build-fixer, review fix), set manifest.implementationDelegated = true first.`

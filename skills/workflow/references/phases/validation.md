@@ -25,13 +25,13 @@
 
 **QA context**: If `manifest.qa.status` exists and is not "skipped", read `.claude-task/{taskId}/qa-report.md` and pass unresolved issues to the code review agent so it has context about known QA findings.
 
-**Policy reference**: `~/.claude/taskplex/policy.json` for gate requirements and limits.
+**Policy reference**: `${CLAUDE_PLUGIN_ROOT}/skills/workflow/references/policy.json` for gate requirements and limits.
 
-**Gate catalog**: `~/.claude/taskplex/gates.md` — canonical gate names, verdict enums, execution order, manifest field mapping.
+**Gate catalog**: `${CLAUDE_PLUGIN_ROOT}/skills/workflow/references/gates.md` — canonical gate names, verdict enums, execution order, manifest field mapping.
 
-**Artifact contract**: `~/.claude/taskplex/artifact-contract.md` — required artifacts by profile.
+**Artifact contract**: `${CLAUDE_PLUGIN_ROOT}/skills/workflow/references/artifact-contract.md` — required artifacts by profile.
 
-**Manifest schema**: `~/.claude/taskplex/manifest-schema.json` — canonical field definitions.
+**Manifest schema**: `${CLAUDE_PLUGIN_ROOT}/skills/workflow/references/manifest-schema.json` — canonical field definitions.
 
 **Gate decision logging**: Initialize `.claude-task/{taskId}/gate-decisions.json` at the start of validation. Append a decision entry after each gate completes.
 
@@ -103,7 +103,7 @@ Run **resolved** build commands from `manifest.buildCommands`:
 
 If build fails:
 **Before spawning**: Run Memplex Context Assembly (see planning.md) for the failing files. Include error resolutions for the specific errors if memplex available.
-> Spawn build-fixer (sonnet) from ~/.claude/agents/utility/build-fixer.md
+> Spawn build-fixer (sonnet) from ${CLAUDE_PLUGIN_ROOT}/agents/build-fixer.md
   Context: error output, modified files, spec.md + Known Context block (if memplex available)
   Returns: "Fixed {N} issues. Build: PASS|FAIL"
 
@@ -189,7 +189,7 @@ This does NOT replace the compliance agent's full cross-validation (Step 8). It 
 
 ## Step 2: Security Review (ALL — mandatory)
 
-> Spawn security-reviewer (sonnet) from ~/.claude/agents/core/security-reviewer.md
+> Spawn security-reviewer (sonnet) from ${CLAUDE_PLUGIN_ROOT}/agents/security-reviewer.md
   Context: manifest.json (modified files list), OWASP focus areas
   Writes: .claude-task/{taskId}/reviews/security.md
   Returns: "PASS" | "WARN" | "FAIL"
@@ -202,7 +202,7 @@ Update manifest: `validation.security`.
 
 ## Step 3: Closure — Requirements + Intent Verification (ALL)
 
-> Spawn closure-agent (haiku) from ~/.claude/agents/core/closure-agent.md
+> Spawn closure-agent (haiku) from ${CLAUDE_PLUGIN_ROOT}/agents/closure-agent.md
   Context: manifest.json, brief.md, spec.md, worker status files
   Writes: .claude-task/{taskId}/reviews/closure.md
   Returns: "PASS" | "FAIL: {what's missing}"
@@ -213,7 +213,7 @@ Update manifest: `validation.closure`.
 
 ## Step 4: Code Review (Standard + Blueprint routes — skip for lean profile)
 
-> Spawn code-reviewer (sonnet) from ~/.claude/agents/core/code-reviewer.md
+> Spawn code-reviewer (sonnet) from ${CLAUDE_PLUGIN_ROOT}/agents/code-reviewer.md
   Context: task intent, spec.md, changed files list, CONVENTIONS.md, CLAUDE.md
   Writes: .claude-task/{taskId}/reviews/code-quality.md
   Returns: "Verdict: APPROVED|NEEDS_REVISION. {N} issues, {M} convention violations."
@@ -227,19 +227,19 @@ Update manifest: `validation.codeReview`.
 ## Step 5: Conditional Reviewers (triggered by file patterns)
 
 **Database Reviewer** — triggers when SQL, migration, or schema files modified:
-> Spawn database-reviewer (sonnet) from ~/.claude/agents/core/database-reviewer.md
+> Spawn database-reviewer (sonnet) from ${CLAUDE_PLUGIN_ROOT}/agents/database-reviewer.md
   Context: manifest.json (modified files), database schema files
   Writes: .claude-task/{taskId}/reviews/database.md
   Returns: "PASS" | "WARN" | "FAIL"
 
 **E2E Reviewer** — triggers when UI components/pages modified:
-> Spawn e2e-reviewer (sonnet) from ~/.claude/agents/core/e2e-reviewer.md
+> Spawn e2e-reviewer (sonnet) from ${CLAUDE_PLUGIN_ROOT}/agents/e2e-reviewer.md
   Context: manifest.json (modified files), dev server URL
   Writes: .claude-task/{taskId}/reviews/e2e.md
   Returns: "PASS" | "WARN" | "FAIL" | "SKIP"
 
 **User Workflow Reviewer** — triggers when navigation/routing files modified:
-> Spawn user-workflow-reviewer (haiku) from ~/.claude/agents/core/user-workflow-reviewer.md
+> Spawn user-workflow-reviewer (haiku) from ${CLAUDE_PLUGIN_ROOT}/agents/user-workflow-reviewer.md
   Context: manifest.json (modified files), routing/nav config
   Writes: .claude-task/{taskId}/reviews/user-workflow.md
   Returns: "PASS" | "WARN"
@@ -274,7 +274,7 @@ If `manifest.extensions.agents` has entries with `phase: "validation"`, spawn ea
 ## Step 6: Build-Fixer (if any reviewer found issues)
 
 If any reviewer returned FAIL or NEEDS_REVISION:
-> Spawn build-fixer (sonnet) from ~/.claude/agents/utility/build-fixer.md
+> Spawn build-fixer (sonnet) from ${CLAUDE_PLUGIN_ROOT}/agents/build-fixer.md
 
 After fixing: re-run the specific reviewer that failed.
 
@@ -355,8 +355,8 @@ If ANY answer is "no": task is NOT complete. Return to implementation.
 
 ## Step 7.5: Hardening (standard + enterprise profiles)
 
-**Policy**: `~/.claude/taskplex/policy.json` for profile requirements.
-**Check catalog**: `~/.claude/taskplex/hardening-checks.md` for check registry, risk profiles, red-lines, scorecard.
+**Policy**: `${CLAUDE_PLUGIN_ROOT}/skills/workflow/references/policy.json` for profile requirements.
+**Check catalog**: `${CLAUDE_PLUGIN_ROOT}/skills/workflow/references/hardening-checks.md` for check registry, risk profiles, red-lines, scorecard.
 
 ### When Hardening Runs
 
@@ -372,14 +372,14 @@ If ANY answer is "no": task is NOT complete. Return to implementation.
 
 1. **Resolve requirements**: Read profile, conventions.json hardening section, determine risk profile
 2. **Discover tools**: Check for CLI tools (npm audit, pip-audit, trivy, gitleaks, semgrep, etc.), browser MCP, cloud MCPs
-3. **Run automated checks (Level 1)**: Per check catalog, run each available tool. See `~/.claude/taskplex/hardening-checks.md`
+3. **Run automated checks (Level 1)**: Per check catalog, run each available tool. See `${CLAUDE_PLUGIN_ROOT}/skills/workflow/references/hardening-checks.md`
 4. **Build human checklist (Level 2)**: Items that couldn't be automated
 5. **Evaluate red lines**: Check against red-line rules per profile
 6. **Compute readiness scorecard**: Weighted score from Level 1 results
 7. **Write hardening report**: To `.claude-task/{taskId}/hardening/` (report.md, gate-decision.json, individual reports)
 8. **Present results**: Profile-specific blocking behavior
 
-> Spawn hardening-reviewer (sonnet) from ~/.claude/agents/core/hardening-reviewer.md
+> Spawn hardening-reviewer (sonnet) from ${CLAUDE_PLUGIN_ROOT}/agents/hardening-reviewer.md
   Context: manifest.json, conventions.json (hardening section), modified files, capability map
   Writes: .claude-task/{taskId}/hardening/ (report.md, gate-decision.json, individual reports)
   Returns: "HARDENING: {verdict}. SCORE: {N}/{threshold}. AUTOMATED: {passed}/{total}. HUMAN: {N} items."
@@ -398,7 +398,7 @@ manifest.hardeningScore = { "total": N, "threshold": T }
 
 ## Step 8: Compliance Agent — Final Gate (ALL — mandatory, runs LAST)
 
-> Spawn compliance-agent (haiku) from ~/.claude/agents/core/compliance-agent.md
+> Spawn compliance-agent (haiku) from ${CLAUDE_PLUGIN_ROOT}/agents/compliance-agent.md
   Context: all review files, manifest.json, CONVENTIONS.md, brief.md
   Writes: .claude-task/{taskId}/reviews/compliance.md
   Returns: "PASS" | "FAIL: {what's wrong}"
@@ -503,7 +503,7 @@ Build PR title and body (tiered by profile). Create via `gh pr create`. Store `m
 
    **If memplex not available**: Skip. No error, no degradation.
 
-5. **Skill evolution** (if signals detected — see `~/.claude/taskplex/skill-evolution.md` for full spec):
+5. **Skill evolution** (if signals detected — see `${CLAUDE_PLUGIN_ROOT}/skills/workflow/references/skill-evolution.md` for full spec):
 
    **Signal detection** (keyword-based, no LLM cost):
    - Check `manifest.iterationCounts.buildFixRounds >= 2`
@@ -515,9 +515,9 @@ Build PR title and body (tiered by profile). Create via `gh pr create`. Store `m
    **If signals exceed threshold AND `manifest.workflow` identifies an active skill:**
    a. Determine skill name from `manifest.workflow` ("taskplex", "plan", "evaluate")
    b. Read `~/.claude/skills/{skill}/skill.md` (or `SKILL.md`)
-   c. Read `~/.claude/skills/{skill}/evolutions.json` (if exists)
+   c. Read `${CLAUDE_PLUGIN_DATA}/evolutions/{skill}.json` (if exists)
    d. Generate evolution entry (LLM call — see skill-evolution.md for prompt template)
-   e. Write/append to `~/.claude/skills/{skill}/evolutions.json`
+   e. Write/append to `${CLAUDE_PLUGIN_DATA}/evolutions/{skill}.json`
    f. If memplex available: `write_knowledge` with the evolution for cross-session search
    g. Record in manifest: `manifest.skillEvolution = { skill, evolutionId, type, signal }`
    h. Note in task summary: "Skill evolution: {type} — {title}"

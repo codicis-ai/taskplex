@@ -90,7 +90,7 @@ In autonomous mode, --light is the minimum design depth. The orchestrator never 
 
 `taskId` = sanitized task description or timestamp.
 
-**manifest.json** — Create immediately using the canonical schema at `~/.claude/taskplex/manifest-schema.json`. Initialize with:
+**manifest.json** — Create immediately using the canonical schema at `${CLAUDE_PLUGIN_ROOT}/skills/workflow/references/manifest-schema.json`. Initialize with:
 ```json
 {
   "schemaVersion": 2,
@@ -236,7 +236,7 @@ Set `manifest.memplexNoticeShown = true` to avoid repeating.
 **Only triggered by explicit user intent.** Do NOT scan for ambient PRD files in the project.
 
 **Detection triggers** — ONLY these:
-1. `--prd` flag → alias for `--blueprint`. Set `manifest.executionMode = "blueprint"`. The architect determines wave decomposition based on scope. Read `~/.claude/taskplex/phases/planning.md` (Blueprint section).
+1. `--prd` flag → alias for `--blueprint`. Set `manifest.executionMode = "blueprint"`. The architect determines wave decomposition based on scope. Read `${CLAUDE_PLUGIN_ROOT}/skills/workflow/references/phases/planning.md` (Blueprint section).
 2. `--plan PLAN-{id}` argument
 3. User explicitly references a PRD/plan file in their task description (e.g., `/tp implement PRD-auth.md`)
 
@@ -723,4 +723,4 @@ Initialize each with `taskId` and empty arrays/objects.
 
 ## Next
 
-Update manifest phase to `"brief"`. Read the planning phase file: `~/.claude/taskplex/phases/planning.md`
+Update manifest phase to `"brief"`. Read the planning phase file: `${CLAUDE_PLUGIN_ROOT}/skills/workflow/references/phases/planning.md`
