@@ -10,6 +10,8 @@ claude --plugin-dir /path/to/taskplex
 
 Then use `/taskplex:tp`, `/taskplex:plan`, `/taskplex:drift`, `/taskplex:solidify`, `/taskplex:evaluate`.
 
+See **[REFERENCE.md](REFERENCE.md)** for the complete component inventory — all 9 hooks, 23 agents, 7 skills, per-route workflows, and the full enforcement matrix.
+
 ## What It Does
 
 TaskPlex wraps every development task in a governed workflow: design before code, verify before commit, review before ship. It runs as hooks, commands, and agent definitions inside AI coding tools — currently Claude Code, with multi-runtime distribution planned for Cursor, Codex, Gemini CLI, OpenCode, Windsurf, Pi, and Antigravity.
