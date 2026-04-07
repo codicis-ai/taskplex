@@ -4,11 +4,18 @@ Structured workflow orchestration for AI coding agents. Design-first development
 
 ## Install (Claude Code)
 
-```bash
-claude --plugin-dir /path/to/taskplex
+```
+/plugin marketplace add github.com/codicis-ai/taskplex
+/plugin install taskplex
 ```
 
 Then use `/taskplex:tp`, `/taskplex:plan`, `/taskplex:drift`, `/taskplex:solidify`, `/taskplex:evaluate`.
+
+For local development:
+```bash
+git clone https://github.com/codicis-ai/taskplex.git
+claude --plugin-dir ./taskplex
+```
 
 See **[REFERENCE.md](REFERENCE.md)** for the complete component inventory — all 9 hooks, 23 agents, 7 skills, per-route workflows, and the full enforcement matrix.
 
