@@ -1,0 +1,9 @@
+{
+  "name": "codicis-ai",
+  "plugins": [
+    {
+      "name": "taskplex",
+      "path": "."
+    }
+  ]
+}
