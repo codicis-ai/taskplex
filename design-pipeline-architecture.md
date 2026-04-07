@@ -967,13 +967,144 @@ The CLI is the primary interface. The app adds: visual kanban, click-to-attach, 
 
 | # | Question | Decision |
 |---|----------|----------|
-| 1 | **Cost at scale** | Acceptable. Blueprint ~$12-20, Standard ~$6-10, Light ~$3-5. Cheaper per session than one long session with context bloat. Users self-select via route. |
+| 1 | **Cost at scale** | Blueprint ~$15-25 (including ~75-150K startup overhead across sessions), Standard ~$8-12, Light ~$3-5. More expensive than single session but each session is fresh context with no compaction drift. Users self-select via route. |
 | 2 | **Windows support** | WSL confirmed working. Pipeline runs in WSL, main session in Windows terminal, shared filesystem via `/mnt/c/`. |
-| 3 | **Pipeline engine language** | **Go.** Single binary, no runtime dependency, fast, good tmux support. DevPit proves the approach. Hooks stay in Node.js (inside Claude Code). Pipeline engine runs outside. |
-| 4 | **Pipeline completion signal** | **Both.** Pipeline writes `pipeline-complete.json`. User resumes with `/taskplex:complete` when ready. File for future automation. No polling. |
-| 5 | **Distribution** | Plugin `bin/` directory for Claude Code users (automatic with plugin install). Standalone install script (`curl \| bash`) for everyone else. npm fallback. Homebrew later. |
-| 6 | **Agent Teams** | Parked as optional future upgrade. Architecture supports it. Not a dependency. |
+| 3 | **Pipeline engine language** | **Go.** Single binary, no runtime dependency, fast, good tmux support. DevPit proves the approach. |
+| 4 | **Pipeline completion signal** | **Both.** Pipeline writes `pipeline-complete.json`. User resumes with `/taskplex:complete`. |
+| 5 | **Distribution** | Plugin `bin/` directory for Claude Code users. Standalone install script for others. |
+| 6 | **Agent Teams** | Parked as optional future upgrade. Not a dependency. |
 | 7 | **`.claude-task/` naming** | Keep for now. Rename to `.taskplex/` in major version (2.0) with migration script. |
-| 8 | **Headless / CI mode** | Add `--headless` flag later. Design phase auto-accepts defaults. Build interactive-first. |
-| 9 | **User query timeout** | Configurable, default 10 minutes. On timeout: session marks as blocked, pipeline moves to next independent step. No hanging. |
-| 10 | **Git ownership** | Pipeline engine owns git during execution. Workers commit in worktrees only. Pipeline engine merges. No session touches main. Completion step does final commit. |
+| 8 | **Headless / CI mode** | Add `--headless` flag later. Build interactive-first. |
+| 9 | **User query timeout** | Configurable, default 10 minutes. On timeout: session marks as blocked, pipeline moves to next independent step. |
+| 10 | **Git ownership** | Pipeline engine owns git during execution. Workers commit in worktrees only. Pipeline engine merges. Completion step does final commit. |
+| 11 | **`claude --agent` + `-p`** | **Verified working.** Tested: `claude --agent explore -p "prompt" --max-turns 3` — agent loaded, tools used, exited cleanly. Foundation confirmed. |
+| 12 | **Hooks in pipeline sessions** | **Disabled.** Pipeline engine replaces hook enforcement. Hooks stay active in the interactive design session only. Avoids race conditions from concurrent manifest writes. |
+| 13 | **Loop-back target** | **Fix step, not re-implementation.** Validation failure spawns a build-fixer session with specific findings. Does not re-run full implementation. |
+| 14 | **Design phase reliability** | **Hooks remain active.** The split model improves execution reliability. Design phase still needs hook enforcement (quality profile gate, artifact gates). The doc does NOT claim design "works fine" — hooks are required. |
+
+## Critical Implementation Details (from critic review)
+
+### Session Completion Detection
+
+Each pipeline session writes a step-complete marker on exit:
+
+```
+.claude-task/{taskId}/pipeline/{stepName}/complete.json
+{
+  "status": "completed|failed|blocked",
+  "artifacts": ["reviews/security.md"],
+  "exitCode": 0,
+  "timestamp": "ISO"
+}
+```
+
+The pipeline engine watches for this file (filesystem watcher + timeout). tmux session exit is a secondary signal. If the session crashes without writing the marker, the engine detects tmux exit and marks the step as `failed`.
+
+**Timeout**: configurable per step (default 10m for reviews, 30m for implementation, 45m for Blueprint waves). On timeout, the engine kills the tmux session and marks the step as `failed:timeout`.
+
+### Context Flow: File-Based Prompt Delivery
+
+Context is NOT passed as shell arguments (argument length limits). Instead:
+
+1. Pipeline engine writes the full prompt to a file:
+   ```
+   .claude-task/{taskId}/pipeline/{stepName}/prompt.md
+   ```
+
+2. The prompt includes: agent directive + relevant artifacts (spec, brief, file-ownership for the specific worker) + prior step outputs.
+
+3. Session launches with:
+   ```bash
+   claude --agent taskplex:{agent} --max-turns 30 \
+     -p "Read your prompt at .claude-task/{taskId}/pipeline/{stepName}/prompt.md and execute it."
+   ```
+
+4. The agent reads the prompt file as its first action. All context is on disk, not in the launch command.
+
+### Hooks Disabled in Pipeline Sessions
+
+Pipeline sessions run with hooks disabled to avoid:
+- **Race conditions**: 8 workers all writing manifest.json + observations.md via heartbeat
+- **Redundancy**: the pipeline engine checks artifacts directly — hooks are not needed
+- **Confusion**: design-gate would block workers from editing files in their own worktrees
+
+How to disable: the pipeline engine sets an environment variable (`TASKPLEX_PIPELINE_SESSION=1`) that hooks check and exit early on.
+
+The interactive design session (Windows terminal) keeps hooks active — it still needs quality profile enforcement, artifact gates, and the guardian.
+
+### No `type: team` in YAML
+
+The YAML uses only `parallel` and `depends_on` primitives. No team semantics:
+
+```yaml
+# Parallel workers — engine spawns all, waits for all
+- name: worker-1
+  agent: implementation-agent
+  parallel_group: "implementation"  # all in same group run in parallel
+  
+- name: worker-2
+  agent: implementation-agent
+  parallel_group: "implementation"
+
+# Sequential dependency
+- name: compliance
+  agent: compliance-agent
+  depends_on: [security-review, code-review, closure]  # waits for all three
+```
+
+### Resource Management
+
+```yaml
+config:
+  max_parallel_sessions: 4      # default, configurable
+  max_total_sessions: 16        # hard cap
+  session_timeout_default: 10m
+  memory_warning_threshold: 80% # of available RAM
+```
+
+The engine queues excess sessions when `max_parallel_sessions` is reached. Sessions launch as slots free up.
+
+### Validation Loop-Back Uses Fix Step
+
+```yaml
+- name: validation
+  # ... reviewers ...
+
+- name: validation-fix
+  agent: build-fixer
+  depends_on: [validation]
+  condition: "any review FAIL|NEEDS_REVISION"
+  context: [validation]  # receives specific findings
+  directive: "Fix the issues identified by reviewers. Do NOT re-implement."
+  
+- name: validation-recheck
+  agent: compliance-agent  
+  depends_on: [validation-fix]
+  condition: "validation-fix completed"
+  directive: "Re-validate only the fixed items."
+  loop:
+    goto: validation-fix
+    max: 2
+```
+
+Fix → recheck → fix → recheck → max 2 rounds → escalate to user. Never re-runs full implementation.
+
+### Multi-Runtime Adapter Scope
+
+The adapter is NOT thin — it's a prompt compiler for non-Claude runtimes:
+
+| What | Claude Code | Codex / Gemini |
+|------|-----------|---------------|
+| Agent definition | `--agent` flag loads .md | Agent .md body injected as system prompt prefix |
+| Tool restrictions | Frontmatter `disallowedTools` | Translated to runtime sandbox policy or prompt instruction |
+| Model selection | Frontmatter `model: sonnet` | `--model` flag with runtime-specific name mapping |
+| Prompt delivery | `--agent` + `-p` | `-p` with full prompt (agent instructions + task) |
+
+For Codex/Gemini, the adapter:
+1. Reads the agent `.md` file
+2. Extracts the markdown body (instructions)
+3. Prepends: "You are a {name}. {body}" as system context
+4. Maps model names: `sonnet` → `gpt-4.1` (Codex) or `gemini-3-flash` (Gemini)
+5. Tool restrictions become prompt instructions: "You MUST NOT edit files. Only read and report."
+
+This is ~200 lines per runtime, not trivial. But it's a one-time build per runtime.
