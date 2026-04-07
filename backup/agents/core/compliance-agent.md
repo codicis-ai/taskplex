@@ -116,7 +116,26 @@ If `manifest.validation.hardening` is not `"N/A"` and not null, verify `hardenin
 
 4. **File coverage check**: Read the modified files list from manifest. Check what percentage of modified files are actually mentioned in review reports. If < 50% of modified source files appear in any review, flag as `WARN: low-coverage`.
 
-**Budget for cross-validation**: Max 5 Grep/Read calls total. This is a spot-check, not a re-review.
+5. **Verdict-findings mismatch check (MANDATORY — auto-FAIL)**: For each review with PASS/APPROVED verdict, scan the review content for:
+   - Keywords: "Must Fix", "P0", "CRITICAL", "unfixed", "not fixed", "remaining", "open issues"
+   - Sections titled "Must Fix", "P0 — Must Fix", "Critical", or similar
+   - Issue tables with "unfixed" or "open" status markers
+
+   **If ANY unfixed Must Fix / P0 / CRITICAL items are found alongside a PASS/APPROVED verdict**: This is an automatic compliance FAIL. The reviewer rationalized a passing verdict despite finding blocking issues. Report:
+   ```
+   FAIL: Verdict-findings mismatch in {review file}.
+   Review lists {N} unfixed Must Fix/P0/CRITICAL items but verdict is {PASS/APPROVED}.
+   Items: {list the specific unfixed items with file:line}
+   ```
+
+   This is the most important cross-validation check. It catches the pattern where reviewers document real problems and then approve anyway.
+
+6. **No-deferral check**: Scan reviews for language suggesting issues were deferred as "low risk", "polish", "cosmetic", or "future improvement" when the issues were found during THIS task's review. If found:
+   - Check if the deferred items are genuinely pre-existing (existed before this task's changes) vs introduced or exposed by this task
+   - If introduced by this task: flag as `WARN: issues found but deferred without justification`
+   - All issues found by reviewers should be fixed in this task unless they are genuinely pre-existing and unrelated
+
+**Budget for cross-validation**: Max 8 Grep/Read calls total (increased from 5 to accommodate new checks).
 
 ### Step 1.5: Intent Cross-Reference
 

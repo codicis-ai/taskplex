@@ -162,11 +162,28 @@ For each reviewer report:
   5. IF still below threshold after re-run:
      - Accept the review but flag as degradation:
        manifest.degradations.push({ type: "thin-review", reviewer: "{name}", citations: N })
+  6. VERDICT-FINDINGS MISMATCH CHECK (most important):
+     - Scan the review for "Must Fix", "P0", "CRITICAL", "unfixed", "remaining"
+     - IF any unfixed must-fix items found AND verdict is PASS/APPROVED:
+       → REJECT the review immediately. Do NOT accept it.
+       → Feed back: "Review lists {N} unfixed Must Fix items but verdict is PASS.
+         Fix ALL Must Fix items, then re-review. A PASS verdict with unfixed
+         Must Fix items is a contradiction."
+       → Re-spawn the reviewer with the feedback + instruction to fix items first
+     - IF the reviewer returns PASS again with unfixed items:
+       → The review stands as FAIL regardless of what the reviewer says
+       → The orchestrator overrides: manifest.validation.{field} = "FAIL"
+
+  7. NO-DEFERRAL CHECK:
+     - Scan for "low risk", "defer", "polish", "cosmetic", "future improvement"
+     - IF issues are being deferred that were found during THIS task:
+       → Feed back: "All issues found must be fixed. Only pre-existing
+         unrelated issues may be deferred. Fix or reclassify."
 ```
 
-**Budget**: 1 Read + 1 Grep per review file. This is a 5-second check, not a re-review.
+**Budget**: 1 Read + 2 Grep per review file. This is a 10-second check, not a re-review.
 
-This does NOT replace the compliance agent's full cross-validation (Step 8). It catches the most obvious shortcuts immediately, so the compliance agent has substantive reports to work with.
+This does NOT replace the compliance agent's full cross-validation (Step 8). It catches the most obvious shortcuts and verdict-findings mismatches immediately.
 
 ---
 

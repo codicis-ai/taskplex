@@ -178,6 +178,48 @@ async function main() {
       }
     }
 
+    // === Verdict-findings mismatch check ===
+    // Scan review files for unfixed must-fix items alongside PASS verdicts.
+    // This catches reviewers who document real problems and then approve anyway.
+    if (profile !== 'lean') {
+      const reviewFiles = ['security.md', 'closure.md', 'code-quality.md'];
+      if (profile === 'enterprise') reviewFiles.push('compliance.md');
+
+      const mismatches = [];
+      for (const file of reviewFiles) {
+        const filePath = path.join(reviewsDir, file);
+        if (!fs.existsSync(filePath)) continue;
+        try {
+          const content = fs.readFileSync(filePath, 'utf8');
+          const hasPass = /verdict[:\s]*(pass|approved)/i.test(content);
+          if (!hasPass) continue; // FAIL/WARN verdicts are fine — they already block
+
+          // Check for unfixed must-fix items alongside PASS verdict
+          const mustFixPattern = /must.fix|P0|critical.*unfixed|critical.*remaining|critical.*open/gi;
+          const unfixedPattern = /unfixed|not.fixed|remaining.issue|open.issue|still.present/gi;
+          const mustFixMatches = (content.match(mustFixPattern) || []).length;
+          const unfixedMatches = (content.match(unfixedPattern) || []).length;
+
+          if (mustFixMatches > 0 && unfixedMatches > 0) {
+            mismatches.push(`${file}: lists unfixed Must Fix/P0/CRITICAL items but verdict is PASS/APPROVED`);
+          }
+        } catch { /* unreadable file, skip */ }
+      }
+
+      if (mismatches.length > 0) {
+        denyTool(
+          `TaskPlex pre-commit: Commit blocked — verdict-findings mismatch.\n` +
+          `Reviews have PASS/APPROVED verdicts but contain unfixed Must Fix items:\n` +
+          `- ${mismatches.join('\n- ')}\n\n` +
+          `Fix ALL Must Fix items, then re-run the reviewer.\n` +
+          `A PASS verdict with unfixed Must Fix items is a contradiction.\n\n` +
+          `To save task state without triggering this gate, commit only .claude-task/ files:\n` +
+          `git add .claude-task/ && git commit -m "chore: TaskPlex state checkpoint"`
+        );
+        return;
+      }
+    }
+
     allowTool();
   } catch (error) {
     if (process.env.TF_DEBUG) console.error(`[tp-pre-commit] ${error.message}`);
