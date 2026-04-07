@@ -668,6 +668,208 @@ The desktop app already has memplex integration. During pipeline execution:
 - **Cross-session insights**: "Worker-1 struggled with the same auth.ts issue that was resolved in a previous task" — memplex surfaces this to the dashboard
 - **Post-pipeline analysis**: After the pipeline completes, memplex processes the full observation log for cross-task learning
 
+## CLI Interface (Primary — No App Required)
+
+The pipeline works fully from the terminal. The desktop app is optional visual polish.
+
+### Pipeline Execution
+
+```bash
+# Start pipeline from approved plan
+tp pipeline "add event engine" --task-id TASK-event-engine-v1
+tp pipeline "add auth" --route standard --profile standard
+tp pipeline "redesign API" --route blueprint --profile enterprise
+
+# Start from existing plan (after /taskplex:plan)
+tp pipeline --plan PLAN-20260406-frontend --route blueprint
+
+# Resume a paused pipeline
+tp pipeline resume --task-id TASK-event-engine-v1
+```
+
+### Monitoring
+
+```bash
+# Kanban status view (ASCII)
+tp status
+
+═══ TaskPlex Pipeline: event-engine ═══
+Route: Blueprint | Profile: Enterprise | Elapsed: 12m 34s
+
+ DONE            ACTIVE           QUEUED
+ ────            ──────           ──────
+ ✓ Spec          ▶ Worker-1       □ QA Journeys
+ ✓ Critic          12/15 files    □ Verification
+ ✓ Test Plan     ▶ Worker-2       □ Security Review
+                    8/10 files    □ Code Review
+                 ▶ Worker-3       □ Closure
+                    3/7 files     □ Compliance
+                                  □ Commit
+
+# Watch mode — auto-refreshes every 2 seconds
+tp status --watch
+
+# Detailed step status
+tp status --detail
+
+Step: implementation
+  Session: implementation-team
+  Teammates: 3 active (worker-1, worker-2, worker-3)
+  Worker-1: 12/15 files, 47 tool calls, 1 fix round, in-scope
+  Worker-2: 8/10 files, 32 tool calls, 0 fix rounds, in-scope
+  Worker-3: 3/7 files, 18 tool calls, 0 fix rounds, 1 scope warning
+  Guardian: 1 scope warning (worker-3 edited utils.rs — not in plan)
+  Next: merge → build gate → QA
+```
+
+### Session Inspection
+
+```bash
+# See last N lines of a session's terminal output
+tp peek worker-1
+tp peek worker-1 -n 200
+
+# Follow mode — streams output like tail -f
+tp peek worker-1 -f
+
+# Full tmux attach — you ARE in the session, can type
+tp attach worker-1
+# Detach: Ctrl-B then D (standard tmux detach)
+
+# See all observations for a session
+tp log worker-1
+
+[14:32:01] EDIT core/src/events.rs owner:worker-1 status:in-scope
+[14:32:15] EDIT core/src/events.rs owner:worker-1 status:in-scope
+[14:33:02] EDIT api/src/routes.rs  owner:worker-1 status:in-scope
+[14:33:45] BASH cargo check -p core → exit 0
+[14:34:12] EDIT core/src/utils.rs  owner:worker-1 status:OUT-OF-SCOPE ⚠
+
+# Full pipeline event log
+tp log
+
+[14:20:00] PIPELINE START route=blueprint profile=enterprise
+[14:20:02] STEP spec STARTED session=planning-team
+[14:24:15] STEP spec COMPLETED artifacts=[spec.md, file-ownership.json]
+[14:24:16] STEP critic STARTED session=planning-team
+[14:25:30] STEP critic COMPLETED verdict=APPROVED round=2
+[14:25:31] STEP test-plan STARTED session=verification
+[14:27:00] STEP test-plan COMPLETED artifacts=[test-plan.md]
+[14:27:01] STEP implementation STARTED session=implementation-team teammates=3
+[14:34:12] GUARDIAN scope-warning worker-3 core/src/utils.rs
+```
+
+### Session Management
+
+```bash
+# Stop a session (pauses workflow — dependent steps wait)
+tp stop worker-1
+# Output: Worker-1 stopped. Dependent steps (merge, QA) now blocked.
+
+# Stop all sessions
+tp stop --all
+
+# Restart a stopped or failed session
+tp restart worker-1
+# Output: Worker-1 restarted (attempt 2/3). Context from attempt 1 included.
+
+# Kill pipeline entirely (abort, no cleanup)
+tp kill
+# Output: Pipeline killed. 3 sessions terminated. Task status: aborted.
+```
+
+### User Interaction
+
+```bash
+# Show pending questions from pipeline sessions
+tp queries
+
+[PENDING] Worker-1 asks:
+  "Build failed: cannot find module 'shared/types'. Is the path correct?"
+  Session: implementation | Step: implementation | 2 minutes ago
+
+[PENDING] Security reviewer asks:
+  "Found OAuth redirect to user-supplied URL. Is this intentional?"
+  Session: validation | Step: security-review | 30 seconds ago
+
+# Respond to a query
+tp respond worker-1 "The path is shared/src/types.rs — check Cargo.toml"
+tp respond security "No, that's a bug — the redirect URL should be validated"
+
+# Send a message to any session proactively
+tp send worker-1 "Focus on the API routes first, leave the scheduler for last"
+```
+
+### Review Inspection
+
+```bash
+# Show review verdicts
+tp reviews
+
+ Review              Verdict    Findings   Evidence
+ ──────              ───────    ────────   ────────
+ security.md         PASS       0 critical  8 citations
+ code-quality.md     NEEDS_REV  3 must-fix  12 citations
+ closure.md          APPROVED   33/35 ACs   35 citations
+ database.md         WARN       2 issues    5 citations
+ e2e.md              PASS       3 journeys  9 screenshots
+ compliance.md       (pending)
+
+# Show specific review detail
+tp review security
+
+# Show guardian status
+tp guardian
+
+ Trigger      Threshold   Current   Status
+ ──────       ─────────   ───────   ──────
+ Scope        3+ files    1         OK
+ Ownership    1+ conflict 0         OK
+ Build loop   3+ rounds   1         OK
+```
+
+### Pipeline Configuration
+
+```bash
+# List available workflows
+tp workflows
+  default.yaml     Standard route pipeline
+  blueprint.yaml   Blueprint route with waves + agent teams
+  light.yaml       Minimal pipeline (no reviews)
+
+# Validate a workflow
+tp validate blueprint.yaml
+  ✓ 7 steps defined
+  ✓ All agent definitions found
+  ✓ Artifact requirements valid
+  ✓ Dependencies acyclic
+  ✓ Loop-back targets valid
+
+# Show pipeline config
+tp config
+  Agent: claude (Claude Code)
+  Timeout: 10m per step
+  Max retries: 3
+  Worktree cap: 8
+  Quality profile: enterprise
+```
+
+### Relationship: CLI vs Dashboard App
+
+| Capability | CLI (`tp`) | Dashboard App |
+|-----------|-----------|---------------|
+| Start pipeline | `tp pipeline "task"` | Click "New Pipeline" |
+| Kanban status | `tp status` (ASCII) | Visual board with drag |
+| Live terminal | `tp peek -f` / `tp attach` | Embedded terminal view |
+| Stop/restart | `tp stop` / `tp restart` | Click buttons on card |
+| Queries | `tp queries` / `tp respond` | Notification + reply box |
+| Review verdicts | `tp reviews` | Cards with verdict badges |
+| Guardian alerts | `tp guardian` | Warning indicators on cards |
+| Event log | `tp log` | Scrollable timeline |
+| Memplex insights | — | Cross-session knowledge overlay |
+
+The CLI is the primary interface. The app adds: visual kanban, click-to-attach, memplex integration, and persistent history across tasks.
+
 ## Open Questions
 
 1. **Agent Teams experimental status.** If we depend on Agent Teams for within-session parallelism and they change or break, the pipeline degrades to sequential execution within each session (one reviewer at a time instead of parallel). Acceptable — just slower.
