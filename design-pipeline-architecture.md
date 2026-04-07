@@ -521,6 +521,153 @@ The split model means both architectures coexist in a single workflow:
 
 **Shared across both**: Agent definitions, review standards, phase instructions, artifact requirements. The execution model differs, not the governance content.
 
+## Mission Control: Kanban Dashboard
+
+The memwright/memplex desktop app becomes a real-time monitoring dashboard for pipeline execution.
+
+### Kanban Board View
+
+Each pipeline session is a card that moves through columns automatically:
+
+```
+┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
+│   QUEUED    │ │   ACTIVE    │ │   REVIEW    │ │  COMPLETE   │ │   FAILED    │
+├─────────────┤ ├─────────────┤ ├─────────────┤ ├─────────────┤ ├─────────────┤
+│             │ │ ┌─────────┐ │ │ ┌─────────┐ │ │ ┌─────────┐ │ │             │
+│ Worker-3    │ │ │Worker-1 │ │ │ │Security │ │ │ │ Spec    │ │ │             │
+│ E2E Review  │ │ │impl-agt │ │ │ │reviewer │ │ │ │ Critic  │ │ │             │
+│ Compliance  │ │ │12 files │ │ │ │3 checks │ │ │ │APPROVED │ │ │             │
+│             │ │ │ 67% ░░░ │ │ │ │scanning │ │ │ └─────────┘ │ │             │
+│             │ │ └─────────┘ │ │ └─────────┘ │ │ ┌─────────┐ │ │             │
+│             │ │ ┌─────────┐ │ │ ┌─────────┐ │ │ │ Worker  │ │ │             │
+│             │ │ │Worker-2 │ │ │ │Code     │ │ │ │  -2     │ │ │             │
+│             │ │ │impl-agt │ │ │ │Reviewer │ │ │ │ MERGED  │ │ │             │
+│             │ │ │ 34% ░░░ │ │ │ │5 files  │ │ │ └─────────┘ │ │             │
+│             │ │ └─────────┘ │ │ └─────────┘ │ │             │ │             │
+└─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘
+```
+
+Cards show:
+- Session name and agent type
+- Progress (files modified / total, tool calls)
+- Current activity (from latest observation log entry)
+- Verdict (when review completes)
+- Retry count (if in a loop)
+
+Cards move automatically as `pipeline-state.json` updates.
+
+### Session Detail View
+
+Click a card to see the live session:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ Worker-1: implementation-agent (sonnet)                  │
+│ Status: ACTIVE | Worktree: tp-worker-task-1              │
+│ Files: 8/12 modified | Tool calls: 47 | Fix rounds: 1   │
+├─────────────────────────────────────────────────────────┤
+│                                                          │
+│ Live Terminal Output (from tmux capture-pane)             │
+│ ─────────────────────────────────────────────             │
+│ Editing core/src/events.rs...                            │
+│ Running cargo check -p core...                           │
+│ ✓ Check passed                                           │
+│ Editing api/src/routes/events.rs...                      │
+│                                                          │
+├─────────────────────────────────────────────────────────┤
+│ Observations (from observations.md)                      │
+│ ─────────────────────────────────────────────             │
+│ [14:32] EDIT events.rs owner:worker-1 status:in-scope   │
+│ [14:33] EDIT routes.rs owner:worker-1 status:in-scope   │
+│ [14:35] EDIT utils.rs  owner:worker-1 status:OUT-OF-SCOPE│
+│                                                          │
+├─────────────────────────────────────────────────────────┤
+│ Guardian: ⚠ 1 scope warning                             │
+│ [Stop Session] [Send Message] [Attach Terminal]          │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Session Management
+
+**Stop a session**: Click "Stop Session" on any card. The pipeline engine:
+1. Sends SIGTERM to the tmux session
+2. Marks the step as `stopped` in pipeline-state.json
+3. Dependent steps move to `blocked`
+4. The dashboard shows which steps are now blocked
+
+**Restart a session**: Click "Restart" on a stopped/failed card. The pipeline engine:
+1. Creates a new tmux session for that step
+2. Passes the same context (including any prior output from the failed attempt)
+3. The step resumes — retry count increments
+
+**Does stopping break the workflow?** It pauses it. Dependent steps wait. The pipeline doesn't proceed past a stopped step. When you restart, it picks up from where it stopped.
+
+**Attach terminal**: Opens the actual tmux pane in a terminal window. You see exactly what the agent sees and can type into it. This is for debugging — if an agent is stuck, you can look at its terminal and intervene directly.
+
+### User Queries and Interaction
+
+**Can queries come back to the main Windows terminal?**
+
+Yes — with a messaging layer. The pipeline engine runs a lightweight local server (WebSocket or file-based):
+
+```
+Pipeline session needs input → writes to .claude-task/{taskId}/pipeline-queries.json:
+{
+  "session": "implementation",
+  "query": "Build failed with: cannot find module 'shared/types'. Is the path correct?",
+  "timestamp": "ISO",
+  "status": "pending"
+}
+
+Dashboard shows query notification → user types response in dashboard or main terminal
+
+User responds → writes to .claude-task/{taskId}/pipeline-responses.json:
+{
+  "session": "implementation",
+  "response": "The path is shared/src/types.rs, not shared/types",
+  "timestamp": "ISO"
+}
+
+Pipeline engine injects response into the tmux session
+```
+
+Alternatively, the dashboard could forward queries to the original Claude Code session in the Windows terminal, where the user is already working. The original session sees:
+
+```
+[Pipeline Query from: implementation]
+Build failed with: cannot find module 'shared/types'. Is the path correct?
+
+> The path is shared/src/types.rs — check the Cargo.toml path configuration
+```
+
+The response gets relayed back to the pipeline session.
+
+**The simplest version**: queries just appear in the dashboard. User responds there. No need to route back to the Windows terminal — the dashboard IS the interaction surface during pipeline execution.
+
+### Data Sources
+
+The dashboard reads these files (all in `.claude-task/{taskId}/`):
+
+| File | Updates | What It Shows |
+|------|---------|-------------|
+| `pipeline-state.json` | Pipeline engine writes after each step transition | Step statuses, active sessions, retry counts, current step |
+| `pipeline-log.jsonl` | Pipeline engine appends per event | Timeline of all step start/complete/fail events |
+| `manifest.json` | Heartbeat hook updates per edit | Phase, tool counts, modified files, progress notes |
+| `observations.md` | Heartbeat hook appends per edit | Per-file edit log with scope/ownership status |
+| `guardian-trigger.json` | Heartbeat hook writes on deviation | Active guardian alerts |
+| `reviews/*.md` | Review agents write on completion | Review verdicts and findings |
+| `progress.md` | Heartbeat hook renders per edit | Task narrative, phase transitions |
+| `pipeline-queries.json` | Pipeline sessions write when stuck | Pending questions for user |
+
+All files are on the shared filesystem (Windows drive mounted in WSL at `/mnt/c/`). The desktop app running on Windows reads them directly — no API needed, just file watching.
+
+### Integration with Memplex
+
+The desktop app already has memplex integration. During pipeline execution:
+- **Live knowledge capture**: As sessions produce observations and reviews, memplex can ingest patterns in real-time (not just at completion)
+- **Cross-session insights**: "Worker-1 struggled with the same auth.ts issue that was resolved in a previous task" — memplex surfaces this to the dashboard
+- **Post-pipeline analysis**: After the pipeline completes, memplex processes the full observation log for cross-task learning
+
 ## Open Questions
 
 1. **Agent Teams experimental status.** If we depend on Agent Teams for within-session parallelism and they change or break, the pipeline degrades to sequential execution within each session (one reviewer at a time instead of parallel). Acceptable — just slower.
