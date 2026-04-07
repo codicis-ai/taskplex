@@ -18,6 +18,11 @@ Structured workflow orchestration for AI coding agents. Design-first development
 | `/taskplex:drift` | **Check codebase health.** Read-only scan for convention violations, architectural drift, circular imports, dependency vulnerabilities, dead code. Produces a drift index (0-100). |
 | `/taskplex:evaluate [mode]` | **Audit what exists.** Two modes: `audit` (investigate quality) and `review` (validate against a product brief). No changes made. |
 
+Uninstall:
+```
+/plugin uninstall taskplex
+```
+
 For local development:
 ```bash
 git clone https://github.com/codicis-ai/taskplex.git
