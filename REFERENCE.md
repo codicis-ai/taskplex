@@ -80,14 +80,13 @@ Complete inventory of all components and how they work together across Light, St
 | `session-guardian` | haiku | One-shot analysis when guardian trigger fires |
 | `explore` | haiku | Fast codebase exploration |
 
-### Skills (7 in `skills/`)
+### Skills (6 in `skills/`)
 
 | Skill | Command | Purpose |
 |-------|---------|---------|
 | `tp` | `/taskplex:tp` | Primary workflow — full TaskPlex |
 | `plan` | `/taskplex:plan` | Strategic planning without implementation |
 | `drift` | `/taskplex:drift` | Codebase drift scanner |
-| `solidify` | `/taskplex:solidify` | Merge skill evolutions |
 | `evaluate` | `/taskplex:evaluate` | Product evaluation — audit + review |
 | `frontend` | Auto (UI files) | Frontend dev — design system, a11y, responsive |
 | `workflow` | Auto (by tp) | Core phases + contracts — not user-invocable |

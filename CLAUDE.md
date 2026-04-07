@@ -12,7 +12,6 @@ TaskPlex is a **workflow orchestration framework** that enforces structured, mul
 - `/taskplex` or `/tp` — Claude Code slash commands (`~/.claude/commands/taskplex.md`, `tp.md`)
 - `/plan` — Strategic thinking & architecture command (`~/.claude/commands/plan.md`)
 - `/evaluate` — Product evaluation: audit and review modes (`~/.claude/skills/evaluate/`)
-- `/solidify` — Merge skill evolutions into source (`~/.claude/commands/solidify.md`)
 - `frontend` — Standalone frontend development skill (`~/.claude/skills/frontend/`)
 
 ### Workflow Phases (7 phases, sequential)
@@ -99,7 +98,7 @@ Skills improve from task feedback via staged pipeline:
 
 ### Commands & Skills
 ```
-~/.claude/commands/ — taskplex.md, tp.md, plan.md, solidify.md, drift.md
+~/.claude/commands/ — taskplex.md, tp.md, plan.md, drift.md
 ~/.claude/skills/evaluate/ — audit + review modes
 ~/.claude/skills/frontend/ — standalone frontend dev (design system, a11y, responsive, component spec)
 ~/.claude/skills/plan/ — planning trigger wrapper
@@ -157,7 +156,7 @@ start-task-sentinel.mjs
 - Anti-rationalization review standards across all reviewers
 - Implementation gate enforcement (standard/blueprint delegation)
 - Memplex integration (optional, graceful degradation, pre-spawn context assembly)
-- Skill evolution pipeline (signal detection + evolutions.json + /solidify)
+- Skill evolution pipeline (designed — signal detection + evolutions.json, not yet active in production)
 - Goal traceability (AC → INTENT.md) + intent traceability (AC → architecture)
 - Narrative progress artifact (task narrative in progress.md, injected on resume)
 - Playwright MCP for visual/browser verification

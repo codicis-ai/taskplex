@@ -9,7 +9,7 @@ Structured workflow orchestration for AI coding agents. Design-first development
 /plugin install taskplex
 ```
 
-Then use `/taskplex:tp`, `/taskplex:plan`, `/taskplex:drift`, `/taskplex:solidify`, `/taskplex:evaluate`.
+Then use `/taskplex:tp`, `/taskplex:plan`, `/taskplex:drift`, `/taskplex:evaluate`.
 
 For local development:
 ```bash
@@ -17,7 +17,7 @@ git clone https://github.com/codicis-ai/taskplex.git
 claude --plugin-dir ./taskplex
 ```
 
-See **[REFERENCE.md](REFERENCE.md)** for the complete component inventory — all 9 hooks, 23 agents, 7 skills, per-route workflows, and the full enforcement matrix.
+See **[REFERENCE.md](REFERENCE.md)** for the complete component inventory — all 9 hooks, 23 agents, 6 skills, per-route workflows, and the full enforcement matrix.
 
 ## What It Does
 
@@ -327,7 +327,7 @@ Every enforcement is **hook-based** (fires automatically on every tool call) and
 
 ## Status
 
-**Built and active**: Claude Code plugin (`plugin/`), 7 skills, 9 hooks, 6 phase files, 8 contracts, 23 agents, full artifact-based enforcement (spec/critic/blueprint/validation/conditional/migration gates), session guardian (scope/ownership/trigger blocking), user-confirmed quality profiles, bounded iteration (spec critic/journey coverage/review quality), functional E2E testing with test data, TaskPlex-managed worktrees, code intelligence (LSP + ast-grep), production impact assessment.
+**Built and active**: Claude Code plugin (`plugin/`), 6 skills, 9 hooks, 6 phase files, 8 contracts, 23 agents, full artifact-based enforcement (spec/critic/blueprint/validation/conditional/migration gates), session guardian (scope/ownership/trigger blocking), user-confirmed quality profiles, bounded iteration (spec critic/journey coverage/review quality), functional E2E testing with test data, TaskPlex-managed worktrees, code intelligence (LSP + ast-grep), production impact assessment.
 
 **Designed, not yet built**: Cursor 3 plugin (PRD complete), /plan merge into /tp (design complete), Haiku worker granularity (PRD complete), multi-runtime distribution (6 runtimes), session guardian Phase 3 (background agent), Pi plugin, memplex HTTP API.
 
