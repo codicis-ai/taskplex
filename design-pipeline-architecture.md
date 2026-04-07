@@ -42,81 +42,84 @@ Mode 2: Pipeline Execution (deterministic engine + isolated sessions)
 
 The handoff is the `/taskplex:execute` skill (or `tp pipeline` CLI). It reads the approved plan artifacts and launches the deterministic pipeline.
 
-### Three Layers
+### Two Layers (No Agent Teams)
 
 ```
 Layer 1: Pipeline Engine (Go binary — NOT an LLM)
   - Reads YAML workflow definition
-  - Spawns Claude Code sessions in tmux per step
+  - Spawns Claude Code sessions in tmux via: claude --agent {name} -p "{prompt}"
   - Manages context flow between steps
   - Checks artifact requirements before marking steps complete
   - Handles loop-back, retries, conditions, parallelism
   - Deterministic — no LLM judgment, no shortcuts
 
-Layer 2: Claude Code Session (one per pipeline step)
-  - Each step runs in its own tmux session as a full Claude Code instance
-  - Session loads the agent definition for that step's role
-  - Session has its own context window — no bleed from other steps
-  - Session can spawn an Agent Team for internal parallelism
-
-Layer 3: Agent Teams (optional, within a session)
-  - An implementation session can spawn an Agent Team of workers
-  - A validation session can spawn an Agent Team of reviewers
-  - Workers/reviewers coordinate via shared task list + peer messaging
-  - Team lead coordinates within session; pipeline engine coordinates across sessions
+Layer 2: Claude Code Sessions (one per agent role)
+  - Each role runs in its own tmux session as a full Claude Code instance
+  - Session loads the agent definition via --agent flag (system prompt, tools, model)
+  - Session has its own context window — no bleed from other sessions
+  - Session does ONE job — the agent definition IS its mandate
 ```
 
-### Sessions Spawning Teams
+No Agent Teams. No shared task lists. No peer messaging. No experimental features. The pipeline engine is the ONLY coordinator.
 
-Each pipeline session IS a Claude Code instance. Within that instance, it can spawn an Agent Team for parallelism:
+### Session Architecture
 
 ```
 Pipeline Engine (deterministic, Go)
   │
-  ├─ Session: Implementation (Claude Code + Agent Team)
-  │     └─ Agent Team:
-  │         ├─ Worker-1 (worktree, implementation-agent definition)
-  │         ├─ Worker-2 (worktree, implementation-agent definition)
-  │         ├─ Worker-3 (worktree, implementation-agent definition)
-  │         └─ Team lead merges worktrees after workers complete
+  │ Implementation (parallel — pipeline waits for all):
+  ├─ tmux "tp-worker-1":  claude --agent taskplex:implementation-agent -p "brief: worker-1..."
+  ├─ tmux "tp-worker-2":  claude --agent taskplex:implementation-agent -p "brief: worker-2..."
+  ├─ tmux "tp-worker-3":  claude --agent taskplex:implementation-agent -p "brief: worker-3..."
   │
-  ├─ Session: QA (Claude Code + Agent Team)
-  │     └─ Agent Team:
-  │         ├─ Journey-tester (functional E2E with Playwright)
-  │         └─ Verifier (adversarial testing)
+  │ Pipeline merges worktrees, runs build gate
   │
-  ├─ Session: Validation (Claude Code + Agent Team)
-  │     └─ Agent Team:
-  │         ├─ Security reviewer
-  │         ├─ Code reviewer
-  │         ├─ Closure agent
-  │         ├─ Database reviewer (conditional)
-  │         ├─ E2E reviewer (conditional)
-  │         └─ Compliance agent (runs last, cross-validates all)
+  │ QA (sequential):
+  ├─ tmux "tp-qa":        claude --agent taskplex:orchestrator -p "run QA phase..."
+  ├─ tmux "tp-verifier":  claude --agent taskplex:verification-agent -p "adversarial test..."
   │
-  └─ Session: Completion (Claude Code, single agent)
-        └─ Git commit + PR
+  │ Validation (parallel — pipeline waits for all):
+  ├─ tmux "tp-security":  claude --agent taskplex:security-reviewer -p "review security..."
+  ├─ tmux "tp-codereview": claude --agent taskplex:code-reviewer -p "review code quality..."
+  ├─ tmux "tp-closure":   claude --agent taskplex:closure-agent -p "verify requirements..."
+  ├─ tmux "tp-database":  claude --agent taskplex:database-reviewer -p "review queries..."
+  ├─ tmux "tp-e2e":       claude --agent taskplex:e2e-reviewer -p "functional E2E test..."
+  │
+  │ Pipeline waits for all reviewers, then:
+  ├─ tmux "tp-compliance": claude --agent taskplex:compliance-agent -p "cross-validate..."
+  │
+  │ Completion:
+  └─ tmux "tp-commit":    claude --agent taskplex:orchestrator -p "git commit + PR"
 ```
 
-**Each session can be a single agent OR an Agent Team.** The pipeline engine doesn't care — it just checks artifacts when the session finishes.
+Each tmux session = one Claude Code instance = one agent definition = one job. The pipeline engine spawns them, monitors artifacts, and coordinates ordering.
 
-**The validation session is the most powerful.** All reviewers run as teammates. They can claim review tasks independently, message each other ("I found an auth issue — check the session handling"), challenge findings, and the compliance agent sees all outputs and cross-validates.
+### Why No Agent Teams
 
-### Does Nesting Work?
+| What Agent Teams Adds | Do We Need It? |
+|----------------------|----------------|
+| Shared task list with auto-claim | No — pipeline engine assigns tasks explicitly |
+| Peer-to-peer messaging | No — pipeline engine relays context between steps |
+| Team lead coordination | No — pipeline engine IS the coordinator |
+| TeammateIdle/TaskCompleted hooks | No — pipeline checks artifacts directly |
 
-**Yes, with constraints:**
-- No nested teams (a teammate can't spawn its own team)
-- One team per session
-- Teams share the session's workspace (worktrees provide isolation)
+What Agent Teams costs:
+- Experimental dependency (behind a flag, known limitations)
+- Extra tokens (team lead overhead per session)
+- Two coordination layers (pipeline + team)
+- Complexity (nested sessions, mailbox system)
 
-Architecture:
-```
-Pipeline Engine → spawns N Claude Code sessions (in tmux)
-Each session → optionally runs 1 Agent Team
-Each team → has M teammates (Claude Code sub-sessions)
-```
+The pipeline engine does everything Agent Teams does, but deterministically. No LLM decides whether to coordinate — the Go binary does it.
 
-For a Blueprint task: 4 sessions × 3-5 teammates average = 12-20 concurrent Claude instances at peak. The design phase runs in the original session (1 instance), so it only gets expensive at execution time.
+### Session Counts
+
+| Route | Implementation | QA | Validation | Completion | Total Sessions |
+|-------|---------------|-----|-----------|------------|---------------|
+| Light | 1 | 1 | 0 (lean) | 1 | 3 |
+| Standard | 1-3 | 2 | 3-6 | 1 | 7-12 |
+| Blueprint | 3-8 per wave | 2 | 5-8 | 1 | 11-19 |
+
+Each session is cheap — a focused Claude Code instance running one agent for 2-10 minutes. No team lead overhead, no coordination tokens.
 
 ### Why This Split Works
 
@@ -872,16 +875,14 @@ The CLI is the primary interface. The app adds: visual kanban, click-to-attach, 
 
 ## Open Questions
 
-1. **Agent Teams experimental status.** If we depend on Agent Teams for within-session parallelism and they change or break, the pipeline degrades to sequential execution within each session (one reviewer at a time instead of parallel). Acceptable — just slower.
+1. **Cost at scale.** Blueprint: ~$12-20 per task (11-19 sessions, each focused and short). Standard: ~$6-10. Light: ~$3-5. Each session runs 2-10 minutes with a single focused agent — cheaper per session than the current model where one session runs 30-60 minutes with context bloat.
 
-2. **Cost at scale.** Blueprint with teams: ~$20-35 per task. Standard without teams: ~$8-12. Light (no pipeline): ~$3-5. Is the cost gradient acceptable? Users self-select via route choice.
+2. **Windows support.** Confirmed: WSL works. Claude Code installs and runs in WSL Ubuntu. Pipeline engine spawns tmux sessions in WSL, reads/writes to `/mnt/c/` (same Windows filesystem). Main Claude Code session runs in Windows terminal, pipeline runs in WSL.
 
-3. **Windows support.** tmux doesn't run natively on Windows. Options: WSL (works, adds friction), or a Windows-native session manager. DevPit has the same limitation. Current user is on Windows — this is a real blocker.
+3. **Pipeline engine language.** DevPit uses Go (single binary, fast, good tmux support). Alternative: Node.js (same ecosystem as hooks). Recommendation: Go — the pipeline engine is a system tool, not a plugin. Single binary distribution via npm package or homebrew.
 
-4. **Pipeline engine as Go binary or Node.js?** DevPit uses Go. TaskPlex could use Node.js (already in the ecosystem — hooks are .mjs). Go is faster and compiles to a single binary. Node.js is more accessible for contributors.
+4. **How does the original session know the pipeline is done?** Options: (a) pipeline engine writes `.claude-task/{taskId}/pipeline-complete.json` — the user's Claude Code session checks for it, (b) user runs `/taskplex:complete` manually to resume, (c) both — file written for automation, manual command for immediate resumption.
 
-5. **Start without Agent Teams?** Phase 1: sequential sessions (like DevPit). Phase 2: add Agent Teams for parallelism. This removes the experimental dependency for the initial build.
+5. **Distribution.** The pipeline engine is a binary. Options: bundled in the plugin's `bin/` directory (Claude Code adds it to PATH), npm package (`npx tp`), or standalone install (`brew install tp` / `curl install`).
 
-6. **How does the original session know the pipeline is done?** Options: (a) polling — check for completion artifact, (b) the pipeline engine writes a signal file and the session's heartbeat hook detects it, (c) the user manually resumes with `/taskplex:complete`.
-
-7. **Should the pipeline engine be distributed separately?** It's a binary, not a plugin. Options: npm package (`npx taskplex-pipeline`), homebrew, or bundled in the plugin's `bin/` directory (Claude Code plugins support `bin/` for executables added to PATH).
+6. **Agent Teams as future upgrade.** The architecture doesn't preclude Agent Teams — if they stabilize, a session could optionally use one for internal parallelism. But the baseline works without them. No dependency on experimental features.
