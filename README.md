@@ -9,7 +9,14 @@ Structured workflow orchestration for AI coding agents. Design-first development
 /plugin install taskplex
 ```
 
-Then use `/taskplex:tp`, `/taskplex:plan`, `/taskplex:drift`, `/taskplex:evaluate`.
+## Commands
+
+| Command | What It Does |
+|---------|-------------|
+| `/taskplex:tp [flags] [task]` | **Build something.** The main command — runs the full governed workflow from design through implementation to validated commit. Flags: `--light`, `--standard` (default), `--blueprint`, `--plan PLAN-{id}`. |
+| `/taskplex:plan [description]` | **Think before building.** Strategic planning only — research, product context, architecture, critic review. Produces a plan file you can execute later with `/taskplex:tp --plan`. |
+| `/taskplex:drift` | **Check codebase health.** Read-only scan for convention violations, architectural drift, circular imports, dependency vulnerabilities, dead code. Produces a drift index (0-100). |
+| `/taskplex:evaluate [mode]` | **Audit what exists.** Two modes: `audit` (investigate quality) and `review` (validate against a product brief). No changes made. |
 
 For local development:
 ```bash
