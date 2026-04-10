@@ -569,6 +569,189 @@ $ tp respond security "Flag as must-fix — add URL validation"
 
 The user reads feedback from multiple runtimes in one place, responds once, and the pipeline relays to the appropriate session. The user then makes changes in their Windows Claude Code session with the full feedback context.
 
+## Dual-Executor Model: Pi SDK + Claude Agent SDK
+
+### The Cost Problem
+
+Claude Haiku ($0.25/$1.25 per 1M tokens) is the cheapest Anthropic model. But implementation workers — the highest-volume steps — don't need Anthropic. With granular briefs (exact code, single file, single verify), models like DeepSeek V3.2 ($0.25/$0.38) or Qwen3-Coder ($0.30/$0.50) can do the work at 30-50x lower cost than Sonnet.
+
+| Model | Input/1M | Output/1M | Best For |
+|-------|----------|-----------|----------|
+| Claude Opus 4 | $15.00 | $75.00 | Architect, strategic thinking |
+| Claude Sonnet 4 | $3.00 | $15.00 | Security review, E2E testing with Playwright |
+| DeepSeek V3.2 | $0.25 | $0.38 | Workers, code review, closure, compliance |
+| Gemini 3.1 Flash Lite | $0.25 | $1.50 | Fast structured checks |
+| Qwen3-Coder-480B | ~$0.30 | ~$0.50 | Implementation workers |
+| Devstral | ~$0.20 | ~$0.40 | Implementation workers |
+
+### Two Executors
+
+The pipeline engine uses two executors based on what each step needs:
+
+```
+tp (Go binary) — pipeline orchestration
+  │
+  ├─ Pi executor (90% of steps) — cheap models via OpenRouter
+  │   ├─ Any model: DeepSeek, Qwen, Gemini Flash, Devstral, etc.
+  │   ├─ Built-in tools: read, write, edit, bash
+  │   ├─ No MCP support (Pi limitation)
+  │   └─ Per-step model selection from YAML
+  │
+  └─ Claude executor (10% of steps) — Claude models with MCP
+      ├─ Claude Sonnet/Opus via Anthropic API
+      ├─ Full tool suite + MCP servers (Playwright, memplex)
+      ├─ Used only when MCP is needed or strong reasoning required
+      └─ Via Claude Agent SDK (TypeScript) or Claude Code CLI
+```
+
+### Which Steps Need What
+
+| Step | Needs MCP? | Needs Strong Reasoning? | Executor | Model |
+|------|-----------|------------------------|----------|-------|
+| Architect | No (maybe memplex) | Yes | Claude or Pi | Opus |
+| Strategic critic | No | Yes | Pi | Sonnet-class |
+| Workers (implementation) | No | No — exact code from brief | **Pi** | DeepSeek/Qwen |
+| Coherence check | No | Moderate | Pi | DeepSeek |
+| Build gate | No | No — run commands | Pi | Any cheap |
+| QA smoke test | No | Moderate | Pi | DeepSeek |
+| **QA journey walkthrough** | **Yes (Playwright)** | **Yes** | **Claude** | Sonnet |
+| QA adversarial | No | Yes | Pi | Sonnet-class |
+| Security review | No | Yes | Pi or Claude | Sonnet-class |
+| Code review | No | Moderate | **Pi** | DeepSeek |
+| Closure | No | No — checklist | **Pi** | DeepSeek |
+| Database review | No (bash for EXPLAIN) | Moderate | Pi | DeepSeek |
+| **E2E review** | **Yes (Playwright)** | **Yes** | **Claude** | Sonnet |
+| Hardening | No (bash for audits) | Moderate | Pi | DeepSeek |
+| Compliance | No | Moderate | **Pi** | DeepSeek |
+
+Only 2 steps need Claude (Playwright MCP). Everything else runs on cheap models via Pi.
+
+### YAML Configuration
+
+```yaml
+steps:
+  - name: worker-1
+    executor: pi                            # Pi SDK — cheap model
+    model: deepseek/deepseek-v3.2           # $0.25/M input
+    agent: implementation-agent
+    parallel_group: implementation
+    
+  - name: worker-2
+    executor: pi
+    model: qwen/qwen3-coder-480b           # alternative cheap model
+    agent: implementation-agent
+    parallel_group: implementation
+    
+  - name: security-review
+    executor: pi
+    model: anthropic/claude-sonnet-4        # reasoning needed, but no MCP
+    agent: security-reviewer
+    
+  - name: qa-journey
+    executor: claude                         # Claude Agent SDK — has Playwright
+    model: anthropic/claude-sonnet-4
+    agent: verification-agent
+    mcp_servers:
+      playwright: { command: "npx", args: ["@playwright/mcp@latest"] }
+    
+  - name: e2e-review
+    executor: claude                         # Claude Agent SDK — has Playwright
+    model: anthropic/claude-sonnet-4
+    agent: e2e-reviewer
+    mcp_servers:
+      playwright: { command: "npx", args: ["@playwright/mcp@latest"] }
+    
+  - name: closure
+    executor: pi
+    model: google/gemini-3-flash-lite       # cheap, fast
+    agent: closure-agent
+    
+  - name: compliance
+    executor: pi
+    model: deepseek/deepseek-v3.2
+    agent: compliance-agent
+```
+
+### Pi SDK Integration (TypeScript)
+
+Pi provides a TypeScript SDK with programmatic agent control:
+
+```typescript
+import { createAgentSession, SessionManager } from "@mariozechner/pi-coding-agent";
+
+// Create session with specific model
+const { session } = await createAgentSession({
+  sessionManager: SessionManager.inMemory(),
+  authStorage, modelRegistry
+});
+
+// Configure per step
+await session.setModel(modelFromYaml);                    // deepseek, qwen, etc.
+session.agent.state.systemPrompt = agentDefinitionMd;     // from agents/*.md
+session.agent.state.tools = [readTool, editTool, bashTool]; // per agent def
+
+// Run
+await session.prompt(promptFromFile);
+await session.agent.waitForIdle();
+
+// Check completion
+const artifacts = checkArtifacts(stepDir);
+```
+
+Pi supports: OpenRouter, Anthropic, OpenAI, Google, Groq — any model available through these providers.
+
+### tp ↔ Pi Bridge
+
+tp (Go) communicates with Pi (TypeScript) per step:
+
+**Option A — RPC over stdin/stdout:**
+```
+tp spawns: node pi-bridge.js --config step-config.json
+Pi reads config → sets model, prompt, tools → runs agent loop → writes completion marker
+tp polls for completion marker (existing mechanism)
+```
+
+**Option B — Node.js subprocess (simpler):**
+```
+tp writes: .claude-task/{taskId}/pipeline/{stepName}/runner.js
+tp spawns: node runner.js
+runner.js: imports Pi SDK, runs step, writes artifacts + completion marker
+tp polls for completion marker
+```
+
+Option B is simpler to start. Option A is cleaner for production.
+
+### Cost Comparison
+
+**All-Claude (current):**
+| Component | Model | Est. Cost |
+|-----------|-------|-----------|
+| Architect | Opus | $3.00 |
+| Critic | Sonnet | $0.50 |
+| 3 workers | Sonnet | $4.50 |
+| QA (3 steps) | Sonnet | $1.50 |
+| 6 reviewers | Sonnet | $3.00 |
+| Compliance | Sonnet | $0.25 |
+| **Total** | | **$12.75** |
+
+**Dual-executor (Pi + Claude):**
+| Component | Model | Executor | Est. Cost |
+|-----------|-------|----------|-----------|
+| Architect | Opus | Claude | $3.00 |
+| Critic | Sonnet-class via Pi | Pi | $0.30 |
+| 3 workers | DeepSeek V3.2 | Pi | **$0.15** |
+| QA smoke + adversarial | DeepSeek | Pi | $0.10 |
+| QA journey (Playwright) | Sonnet | Claude | $0.50 |
+| Security review | Sonnet-class via Pi | Pi | $0.15 |
+| Code review | DeepSeek | Pi | $0.05 |
+| Closure | Gemini Flash | Pi | $0.03 |
+| E2E review (Playwright) | Sonnet | Claude | $0.50 |
+| Database + hardening | DeepSeek | Pi | $0.05 |
+| Compliance | DeepSeek | Pi | $0.03 |
+| **Total** | | | **$4.86** |
+
+**62% cost reduction** — and the quality-critical steps (architect, Playwright testing) still use Claude.
+
 ## Relationship to Current Architecture
 
 The split model means both architectures coexist in a single workflow:
