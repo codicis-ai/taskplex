@@ -1,196 +1,234 @@
-# TaskPlex — Structured Workflow Orchestration for AI Agents
+# TaskPlex — Go-Based Workflow Harness for AI Agents
 
 ## What TaskPlex Is
 
-TaskPlex is a **workflow orchestration framework** that enforces structured, multi-phase development workflows for AI coding agents (Claude Code, pi). It wraps every development task in a design-first process with quality gates, user interaction checkpoints, and validation pipelines.
+TaskPlex is a **Go-based workflow harness** that governs the full lifecycle of AI-assisted software development. A deterministic Go binary (`tp`) manages design, planning, implementation, QA, validation, and completion — no LLM in the control plane.
 
-**Core thesis**: The governance infrastructure IS the product. Not the agents. Agents are commoditized — what differentiates is context architecture, validation, autonomy management, and audit trails.
+**Core thesis**: The governance infrastructure IS the product. Agents are commoditized — what differentiates is the intent contract, deterministic enforcement, and audit trail.
 
-## Architecture Overview
+## Architecture
 
-### Entry Points
-- `/taskplex` or `/tp` — Claude Code slash commands (`~/.claude/commands/taskplex.md`, `tp.md`)
-- `/plan` — Strategic thinking & architecture command (`~/.claude/commands/plan.md`)
-- `/evaluate` — Product evaluation: audit and review modes (`~/.claude/skills/evaluate/`)
-- `frontend` — Standalone frontend development skill (`~/.claude/skills/frontend/`)
+### Control Plane
 
-### Workflow Phases (7 phases, sequential)
-1. **Initialization** — Parse task, create manifest, create task list, detect memplex, load context, detect project type
-2. **Design (Sub-phase A)** — Convention scan + memplex convention lookup + optional user questions
-3. **Design (Sub-phase B)** — Research & discovery: references, problem space, codebase scan (Blueprint + Standard-conditional)
-4. **Design (Sub-phase C)** — Product context: user profiles, journeys (DOES/SEES/FEELS), JTBD, feature assessment, contract (Blueprint only)
-5. **Design (Sub-phase D)** — Adaptive intent exploration: synthesize context, lightweight journeys (Standard), write intent file as architect guardrails
-6. **Planning** — Spec writing by planning agent (with intent guardrails), critic review (with debate log), user reviews full draft (Blueprint) or summary (Standard), refine task list
-7. **Implementation** — Coherence check, build gate, documentation update. Team/Blueprint: delegate to agents in worktrees (enforced by hook)
-7.5. **QA** — Product-type-aware testing with structured journey input, memplex error resolution
-8. **Validation** — Artifact-based gates, then 12-step pipeline: traceability, build, security, closure, code review, conditional, hardening, compliance
-9. **Completion** — Memplex knowledge persistence, skill evolution, git commit, PR, task summary
+The Go harness (`tp`) owns the entire workflow:
+- Reads YAML workflow definitions
+- Spawns isolated agent sessions per step
+- Enforces per-step tool restrictions and artifact requirements
+- Manages state, retries, parallelism, and transitions deterministically
+- Single enforcement hook (`tp-compliance.mjs`) calls `tp state check` before every tool call
 
-### Execution Routes (3)
-| Route | Flag | Agents | Use Case |
-|-------|------|--------|----------|
-| **Standard** | `--standard` | 1 agent | Default, single-threaded |
-| **Team** | `--team` | 1-3 parallel agents | Independent sections |
-| **Blueprint** | `--blueprint` | Opus architect + critics + multi-agent + worktrees | Complex features |
+### Entry Point
 
-Initiative mode (`--prd`) extends Blueprint with feature decomposition and wave-based execution.
+User types `/taskplex:tp` in their coding agent → Go harness takes over for everything.
 
-### Quality Profiles (3)
-| Profile | Gates | Hardening |
-|---------|-------|-----------|
-| **Lean** | Minimal | Skipped |
-| **Standard** | Full (security, closure, code review, compliance) | Advisory |
-| **Enterprise** | Full + readiness + dependency/license/migration/operability | Blocking |
+### Intent Contract (Central Driver)
 
-### Adaptive Interaction Model (v2)
-Design phase uses **adaptive interaction** — question count driven by context density, not hard minimums. System gathers context from 4 sources (invocation, docs, codebase scan, memplex), synthesizes, then asks only about gaps.
+Every task is governed by a **success contract** that flows through all phases:
 
-**Gate criteria** (flags, not counters):
-- **Full mode**: `contextConfirmed && ambiguitiesResolved && approachSelected && sectionsApproved >= 1`
-- **Light mode**: `contextConfirmed`
-
-## Key Enforcement Mechanisms
-
-### Hooks (9 hooks, all wired in settings.json)
-| Hook | Purpose | Enforcement |
-|------|---------|-------------|
-| `tp-design-gate` | Design gate: blocks writes before design complete. Implementation gate: blocks orchestrator source edits in team/blueprint | Hard |
-| `tp-heartbeat` | Tracks every file edit, updates manifest, renders progress | Hard |
-| `tp-pre-commit` | Blocks git commits without `validation-gate.json` | Hard |
-| `tp-session-start` | Detects active tasks, renders checklist, instructs TaskCreate recreation | Advisory |
-| `tp-pre-compact` | Checkpoints state (including phaseChecklist) before compaction | Advisory |
-| `tp-prompt-check` | Detects /tp invocations, warns about active tasks, injects workflow reminder | Advisory |
-| `tp-stop` | Warns/blocks on incomplete validation at session end | Conditional |
-| `start-task-sentinel` | Tracks non-edit tool calls for compaction guard | Advisory |
-
-### Key Rules
-- **Execution Continuity**: After user approves plan, implementation runs non-stop — no "should I continue?"
-- **User Visibility**: Present artifacts inline in conversation, never point to files. Pre-spawn status for every agent.
-- **Mid-Task Changes**: User can redirect at any time. Task list and manifest must stay current.
-- **Implementation Delegation**: Team/Blueprint must use agents (hook-enforced). Blueprint must use worktrees.
-
-## Memplex Integration (Optional)
-
-When available, enriches every phase with cross-session knowledge. When unavailable, skips silently.
-- **Pre-spawn context assembly**: Orchestrator calls file_intelligence + get_error_resolution + search_knowledge before spawning each agent, includes as "Known Context" block
-- **Knowledge persistence**: At completion, saves file couplings, error resolutions, patterns, decisions
-- **Convention/intent enhancement**: Past decisions and corrections inform design phase
-- **Honest upsell**: Capability statements only, never counterfactuals
-
-## Skill Evolution
-
-Skills improve from task feedback via staged pipeline:
-- Signal detection (keyword-based, no LLM) at completion
-- Evolution entries written to `evolutions.json` (per skill, staged)
-- Loaded before next skill invocation
-- `/solidify` merges approved evolutions into SKILL.md permanently
-
-## File Locations
-
-### Core Contracts
 ```
-~/.claude/taskplex/
-├── phases/ (init, planning, qa, validation, bootstrap, prd)
-├── policy.json, gates.md, artifact-contract.md, manifest-schema.json
-├── handoff-contract.md, hardening-checks.md, portability.md
-└── skill-evolution.md
+Design → success-criteria.json    (structured SC-* with observable outcomes)
+Planning → success-map.json       (SC-* mapped to code targets + verification)
+Implementation → worker-evidence.json  (per-worker evidence of SC satisfaction)
+Validation → traceability.json    (resolved evidence matrix: SC → code → status)
+Completion → workflow-eval.json   (process self-evaluation)
 ```
 
-### Commands & Skills
-```
-~/.claude/commands/ — taskplex.md, tp.md, plan.md, drift.md
-~/.claude/skills/evaluate/ — audit + review modes
-~/.claude/skills/frontend/ — standalone frontend dev (design system, a11y, responsive, component spec)
-~/.claude/skills/plan/ — planning trigger wrapper
+Each success criterion gets a status: `SATISFIED`, `PARTIAL`, `MISSING`, or `UNSCORABLE`.
+Missing high-priority SC = automatic FAIL.
+
+### Workflow Phases
+
+1. **Initialization** — Route selection, quality profile (user confirms), build commands, context loading
+2. **Convention Scan** — Codebase patterns + user confirmation
+3. **Exploration** — Fast reconnaissance via explore agent → `exploration-summary.md`
+4. **Intent Exploration** — User journeys, approach selection, write `brief.md` + `intent.md` + `success-criteria.json`
+5. **Planning** — Spec writing with intent guardrails, critic review (max 3 rounds), write `success-map.json`
+6. **Implementation** — Parallel workers in isolated sessions, each produces `worker-evidence.json`
+7. **QA** — Migrations, dev server, functional E2E journeys, adversarial verification
+8. **Validation** — Parallel reviewers, traceability resolution, workflow eval, compliance
+9. **Completion** — Git commit, PR, knowledge persistence
+
+### Execution Routes
+
+| Route | Flag | What Happens |
+|-------|------|-------------|
+| **Light** | `--light` | Minimal design, single worker, basic QA |
+| **Standard** | default | Full design, 1-3 parallel workers, critic review, full validation |
+| **Blueprint** | `--blueprint` | Explore pre-pass, conditional architect (only when needed), multi-agent waves, enterprise validation |
+
+### Quality Profiles (user-confirmed, never auto-assigned)
+
+| Profile | Validation Agents | Required Artifacts |
+|---------|------------------|--------------------|
+| **Lean** | Build checks only | None |
+| **Standard** | Security, closure, code review | `security.md` + `closure.md` + `code-quality.md` |
+| **Enterprise** | + hardening + compliance | All of standard + `hardening/report.md` + `compliance.md` |
+
+Conditional reviewers trigger by file patterns: database (SQL), e2e (UI), user-workflow (routing).
+
+## Enforcement Model
+
+### Single Governance Hook
+
+`tp-compliance.mjs` calls `tp state check` before every tool call. The Go binary checks the current step's allowed/blocked tools and returns allow/deny. This ONE hook replaces all prior enforcement hooks.
+
+### Artifact-Based Progression
+
+The Go engine checks file existence between steps. Missing artifacts block progression deterministically — no LLM judgment involved.
+
+### Declarative Step Rules
+
+Each YAML step defines:
+- `allowed_tools` / `blocked_tools` — what the agent can do
+- `artifacts.required` — what must exist before completion
+- `interaction.mode` — question / autonomous / interactive
+- `skip_conditions` — when to skip
+- `on_complete` — manifest updates, events emitted
+
+## Agents
+
+### Planning & Design
+| Agent | Role |
+|-------|------|
+| `explore` | Fast codebase reconnaissance — maps terrain before architect. Writes `exploration-summary.md`. Cannot make decisions. |
+| `architect` | Architecture decisions only. Reads prepared inputs (brief, intent, exploration-summary). Writes `architecture.md` + `worker-strategy.md`. Returns BLOCKED if inputs insufficient. |
+| `planning-agent` | Writes spec from brief + intent guardrails. Writes `success-map.json`. |
+| `strategic-critic` | Reviews architecture/PRD strategic soundness |
+| `tactical-critic` | Reviews per-feature spec quality |
+| `researcher` | External research (web search) |
+
+### Implementation
+| Agent | Role |
+|-------|------|
+| `implementation-agent` | Implements code per brief. Produces `worker-evidence.json` for SC satisfaction. |
+| `build-fixer` | Fixes build/review failures |
+| `merge-resolver` | Resolves git merge conflicts |
+
+### Verification
+| Agent | Role |
+|-------|------|
+| `verification-agent` | Adversarial testing. Two modes: test-plan + verify. |
+
+### Review
+| Agent | Role |
+|-------|------|
+| `security-reviewer` | OWASP-focused security scan |
+| `closure-agent` | Success contract verification — scores each SC-* against implementation evidence. SATISFIED/PARTIAL/MISSING/UNSCORABLE. |
+| `code-reviewer` | Code quality, conventions |
+| `hardening-reviewer` | Production readiness, EXPLAIN ANALYZE |
+| `database-reviewer` | Query correctness, migration safety |
+| `e2e-reviewer` | Functional journey testing via Playwright |
+| `user-workflow-reviewer` | Navigation coherence |
+| `compliance-agent` | Final gate — cross-validates all reviews + success contract |
+
+### Shared
+| Asset | Role |
+|-------|------|
+| `review-standards` | Anti-rationalization rules, verdict-findings consistency |
+
+### Utility
+| Agent | Role |
+|-------|------|
+| `drift-scanner` | Read-only codebase drift scan |
+| `session-guardian` | One-shot analysis when deviations detected |
+| `build-fixer` | Fix build/review failures |
+
+## Multi-Agent Model Selection
+
+Users configure which coding agent and model runs each role:
+
+```yaml
+# ~/.taskplex/config.yaml
+roles:
+  architect:      { agent: claude, model: claude-opus-4 }
+  critic:         { agent: codex, model: gpt-5.4 }
+  implementation: { agent: pi, model: deepseek-v3.2 }
+  security:       { agent: gemini, model: gemini-3-pro }
+  e2e-testing:    { agent: claude, model: claude-sonnet-4 }
+  closure:        { agent: pi, model: gemini-3-flash-lite }
 ```
 
-### Agents (19 core + 4 utility)
+Configured via `tp setup` (one-time), `tp config amend` (change anytime), and workflow checkpoint (per-task adjustment).
+
+## Key Artifacts
+
+| Artifact | Phase | Purpose |
+|----------|-------|---------|
+| `brief.md` | Design | User stories, ACs, scope |
+| `intent.md` | Design | Binding guardrails for architect |
+| `success-criteria.json` | Design | Structured SC-* success contract |
+| `exploration-summary.md` | Design | Codebase reconnaissance for architect |
+| `spec.md` | Planning | Implementation plan |
+| `success-map.json` | Planning | SC-* → code targets + verification |
+| `architecture.md` | Planning (Blueprint) | Architecture decisions |
+| `worker-strategy.md` | Planning (Blueprint) | Worker decomposition plan |
+| `file-ownership.json` | Planning | Worker file assignments |
+| `worker-evidence.json` | Implementation | Per-worker SC evidence |
+| `reviews/*.md` | Validation | Review verdicts |
+| `traceability.json` | Validation | Resolved SC evidence matrix |
+| `workflow-eval.json` | Validation | Process self-evaluation |
+
+## Repository Layout
+
 ```
-Core: architect, planning-agent, implementation-agent, verification-agent,
-      review-standards (shared reference), security-reviewer, closure-agent,
-      code-reviewer, hardening-reviewer, database-reviewer, e2e-reviewer,
-      user-workflow-reviewer, compliance-agent, researcher, merge-resolver,
-      bootstrap, prd-bootstrap, strategic-critic, tactical-critic
-Utility: build-fixer, drift-scanner, explore, session-guardian
+taskplex/                           # This repo — plugin + policy assets
+├── .claude-plugin/                 # Plugin manifest
+├── agents/                         # Agent definitions — system prompts consumed by Go harness
+├── hooks/                          # tp-compliance.mjs — single governance hook
+├── skills/                         # Entry points + workflow references
+│   └── workflow/references/        # Phase files + contracts (policy inputs to Go harness)
+├── backup/                         # File backups
+└── *.md                            # Design documents + PRDs
+
+tp/                                 # Separate repo (codicis-ai/tp) — Go harness
+├── cmd/tp/                         # CLI entry point
+├── internal/                       # Engine, executors, governance, state, session, IPC
+├── workflows/                      # YAML workflow definitions (design, standard, blueprint, etc.)
+└── codex/ cursor/ opencode/        # Runtime adapter scaffolds
 ```
 
-### Hooks (9 files in ~/.claude/hooks/)
-```
-hook-utils.mjs, tp-design-gate.mjs, tp-session-start.mjs, tp-heartbeat.mjs,
-tp-pre-commit.mjs, tp-pre-compact.mjs, tp-prompt-check.mjs, tp-stop.mjs,
-start-task-sentinel.mjs
-```
+## Design Documents
 
-## Design Documents (this project directory)
+| Document | Status |
+|----------|--------|
+| `design-pipeline-architecture.md` | Active — Go harness architecture, dual-executor model, agent pool config |
+| `design-plan-merge.md` | Superseded — /plan phases merged into design.yaml |
+| `multi-runtime-plan.md` | Partially active — multi-runtime concept valid, delivery via Go harness |
+| `prd-haiku-worker-granularity.md` | Active — granular workers, exact code briefs |
+| `taskplex-documentation.md` | Legacy — needs rewrite for Go-first architecture |
+| `REFERENCE.md` | Legacy — needs status tagging |
+| Other PRDs | Historical — document design decisions that led to current architecture |
 
-| File | Purpose |
+## Codicis AI Organization
+
+| Repo | Product |
 |------|---------|
-| `taskplex-documentation.md` | Complete technical documentation |
-| `memplex-integration.md` | Memplex integration spec + combined roadmap |
-| `interrupt-handling.md` | Interrupt handling design (simplified to natural conversation) |
-| `skill-evolution.md` | Skill evolution system design (copy of contract file) |
-| `harness-engineering-gaps.md` | Harness gap analysis: narrative, verification, Playwright, drift |
-| `multi-runtime-plan.md` | Cross-runtime distribution plan (Cursor, Pi, Gemini, Codex, Antigravity, OpenCode, Windsurf) |
-| `runtime-research-april-2026.md` | Latest runtime extensibility research |
-| `test-plan.md` | Comprehensive test plan for all features (15 tests) |
-| `board-architecture.md` | CEO & Board multi-agent decision system for pi |
-| `business-agent-framework.md` | Enterprise agent deployment research synthesis |
-| `taskplex-pi-gap-analysis.md` | Claude Code → pi hook mapping with gap analysis |
-| `taskplex-pi-plugin.md` | Complete pi plugin build specification |
-| `session-guardian-design.md` | Background session observer: scope drift, convention violations, ownership conflicts during implementation. Inspired by Claude Code KAIROS. |
-| `prd-workflow-enforcement.md` | PRD: Hook gates for critic completion + user acknowledgment + continuity reminder. Layer 1 (structural). Ready to build. |
-| `prd-session-guardian.md` | PRD: Session guardian phases 1-3 (heartbeat checks → hybrid triggers → background agent). Layer 2 (behavioral). Build after Layer 1. |
-| `design-plan-merge.md` | Design: Merge /plan's rich phases (research, product context, journeys, intent file, guardrails) into /tp. Eliminates the quality gap between running /plan+/tp vs /tp alone. |
-| `prd-claude-code-plugin.md` | PRD: Package TaskPlex as Claude Code plugin. One-command install, marketplace distribution, versioned updates. Foundation for multi-runtime distribution. |
-| `prd-cursor-plugin.md` | PRD: Cursor 3 plugin adaptation. 3 hooks (from 9), .mdc rules for design gate + workflow + resume, subagents/ directory, shared taskplex-core. |
-| `prd-haiku-worker-granularity.md` | PRD: Haiku-compatible worker decomposition. Max 2 files, exact code in brief, zero architectural decisions. Architect does thinking, workers do typing. |
+| `codicis-ai/taskplex` | Plugin + policy assets (this repo) |
+| `codicis-ai/tp` | Go harness — pipeline engine |
+| `codicis-ai/memplex` | Project memory and intelligence |
+| `codicis-ai/taskwright` | AI personal assistant |
+| `codicis-ai/memwright` | Memory desktop application |
 
-## What's Built vs What's Designed
+## What's Built
 
-### Built and Active
-- All commands (5), hooks (9), phase files (6), contract files (8), agent definitions (19+4)
-- Three routes: Light / Standard (default, multi-agent) / Blueprint (architect + waves)
-- Adaptive interaction model (v2) with flag-based gates
-- Three-contract chain: intent traceability → test plan → verification
-- Verification agent (adversarial, two modes: test-plan + verify)
-- Anti-rationalization review standards across all reviewers
-- Implementation gate enforcement (standard/blueprint delegation)
-- Memplex integration (optional, graceful degradation, pre-spawn context assembly)
-- Skill evolution pipeline (designed — signal detection + evolutions.json, not yet active in production)
-- Goal traceability (AC → INTENT.md) + intent traceability (AC → architecture)
-- Narrative progress artifact (task narrative in progress.md, injected on resume)
-- Playwright MCP for visual/browser verification
-- Drift detection (/drift command + drift-scanner agent)
-- Verification commands in agent handoffs (mandatory self-verification)
-- Implementation coherence check (haiku, fast, pre-build-gate)
-- Task list lifecycle (create → refine → update → recreate on resume)
-- Presentation detail levels (structured summaries, not full artifacts or terse one-liners)
-- Frontend development skill (standalone, works in any agent)
-- 7 split review agents + verification agent + drift scanner (was 1 unified reviewer)
-- OfficeCLI skill for document generation (companion, not bundled)
-- Code intelligence in agents: LSP integration (diagnostics, references, rename, hover) + ast-grep (structural search/rewrite) — both optional with graceful degradation
-- Production impact assessment: conditional section in spec (DB, APIs, caching, auth, infra triggers) → hardening reviewer validates
-- Context-preserving QA fix loop: fix agent continues same context across rounds, verification agent re-checks (adversarial separation maintained)
-- Workflow enforcement gates: acknowledgment gate (blocks impl without user approval) + critic gate (blocks impl without critic review, artifact fallback) + execution continuity reminder
-- Session guardian Phase 1: scope/ownership/file-count checks in heartbeat, append-only observation log, no-plan detection warning
-- Session guardian Phase 2: trigger detection (scope-alarm, ownership-conflict, build-loop) → guardian-trigger.json → design gate BLOCKS until resolved (hook-enforced, not orchestrator-dependent)
-- TaskPlex-managed worktrees: Blueprint agents use `git worktree` (not runtime-specific isolation). Portable across all runtimes with git.
-- User-confirmed quality profile: lean/standard/enterprise selected during init, never auto-assigned silently. Determines validation rigor. Even autonomous mode requires user confirmation.
-- Validation artifact gate: pre-commit hook verifies actual review files exist per quality profile. Includes conditional reviewers (database, e2e, user-workflow) triggered by file patterns. Enterprise blocks e2e SKIP verdict. Migration artifact required when SQL modified.
-- Bounded iteration loops: spec critic (3 rounds with specific feedback), journey coverage check (2 rounds), review quality protocol (evidence density check per reviewer, re-spawn if shallow)
-- Functional E2E testing: QA journey walkthrough fills forms, submits data, verifies DB state, chains multi-step workflows. E2E reviewer does the same independently.
-- Migration enforcement: QA applies migrations before smoke test, writes migration-applied.json artifact, pre-commit verifies.
-- Database reviewer with Bash access for EXPLAIN ANALYZE and index verification.
-- Dev server startup step in QA (before smoke test, UI/API types).
-- Claude Code plugin: packaged in `plugin/` directory (codicis-ai/taskplex). Skills, agents, hooks, MCP. All paths use `${CLAUDE_PLUGIN_ROOT}`.
+- Go harness (`tp`) — full workflow engine with design, execution, QA, validation
+- Declarative YAML workflows (design.yaml, standard.yaml, blueprint.yaml, light.yaml)
+- Single governance hook (`tp-compliance.mjs` → `tp state check`)
+- Native Go session management (PTY/process, no tmux)
+- Intent contract chain: success-criteria → success-map → worker-evidence → traceability → workflow-eval
+- Explore agent for cheap codebase reconnaissance before architect
+- Conditional architect (Blueprint — only when architectural decisions needed)
+- Multi-executor support (Claude, Codex, Gemini, Pi SDK planned)
+- Governance amendment system (workflow amend, executor amend, audited)
+- Packet execution engine for granular worker decomposition
+- IPC server for real-time monitoring
+- Agent definitions consumed as system prompts by Go harness
+- Phase files and contracts consumed as policy inputs
 
-### Designed but Not Built
-- Multi-runtime distribution — Cursor, Pi, Gemini, Codex, Antigravity, OpenCode, Windsurf (plan in `multi-runtime-plan.md`)
-- Pi plugin — fully specified in `taskplex-pi-plugin.md`
-- Board architecture — designed in `board-architecture.md`
-- Memplex HTTP API — needed for Pi integration (no MCP in Pi)
-- Skill performance tracking — deferred until multi-agent is default
-- Session guardian Phase 2 haiku agent — trigger file blocks via hook, but the actual analysis agent spawn still depends on orchestrator. Design in `prd-session-guardian.md`.
-- Session guardian Phase 3 — full background agent (KAIROS-style). Deferred until runtime support ships.
-- /plan merge into /tp — Research, product context, journeys, intent file, architect guardrails absorbed into /tp design phase. Design in `design-plan-merge.md`.
-- Issue relations/dependencies — deferred, partially covered by prd-state.json
+## What's Designed, Not Built
+
+- Pi SDK executor integration (cheap models for workers)
+- `tp setup` onboarding (discover agents, test connections, model presets)
+- Dashboard app integration (kanban monitoring)
+- Full multi-runtime adapter testing (Codex, Cursor, OpenCode)
+- Workflow eval gate (process self-evaluation)
