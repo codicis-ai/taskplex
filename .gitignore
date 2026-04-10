@@ -1,0 +1,11 @@
+# Binary distribution (built from codicis-ai/tp)
+bin/tp
+bin/tp.exe
+bin/tp-linux
+bin/tp-darwin
+
+# Runtime files copied from tp repo during build
+bin/agents/
+bin/workflows/
+bin/contracts/
+bin/*.mjs

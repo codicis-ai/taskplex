@@ -38,35 +38,36 @@ Extract from the user's message:
 - **Plan file** — if they reference an existing document (PRD, brief, spec)
 - **Project root** — the current working directory
 
-### Step 2: Locate the tp binary
+### Step 2: Build and run the tp command
 
-The tp binary should be at one of:
-- `tp` (if on PATH)
-- The tp project directory (check for `tp.exe` or `tp` binary)
+The tp binary and all runtime files are bundled with this plugin at `${CLAUDE_PLUGIN_ROOT}/bin/`.
 
-If tp is not found, tell the user:
-```
-tp binary not found. Build it with: cd /path/to/tp && go build -o tp ./cmd/tp/
-```
-
-### Step 3: Build and run the tp command
-
-Construct the command based on parsed flags:
+Construct the command based on parsed flags. The binary is at `${CLAUDE_PLUGIN_ROOT}/bin/tp.exe` (Windows) or `${CLAUDE_PLUGIN_ROOT}/bin/tp` (Linux/Mac):
 
 ```bash
-tp pipeline "<task description>" \
+TP_BIN="${CLAUDE_PLUGIN_ROOT}/bin/tp.exe"  # or tp on Linux/Mac
+TP_DIR="${CLAUDE_PLUGIN_ROOT}/bin"
+
+"$TP_BIN" pipeline "<task description>" \
   --task-dir "$(pwd)" \
-  --workflow workflows/design.yaml \
+  --workflow "$TP_DIR/workflows/design.yaml" \
   [--plan <path>] \
   [--task-id <id>]
 ```
 
 **Workflow selection:**
-- For a fresh task (no existing artifacts): `--workflow workflows/design.yaml`
-- For execution only (artifacts already exist): `--workflow workflows/execution.yaml`
+- For a fresh task (no existing artifacts): `--workflow "$TP_DIR/workflows/design.yaml"`
+- For execution only (artifacts already exist): `--workflow "$TP_DIR/workflows/execution.yaml"`
+- For light route: `--workflow "$TP_DIR/workflows/light.yaml"`
 - The hydrate phase auto-detects and skips satisfied design steps
 
 **Run it via Bash.** The tp binary streams progress to stdout — the user sees the kanban board, step transitions, and completion status in real time. Do NOT capture or suppress the output.
+
+If the binary is not found at the expected path, tell the user:
+```
+tp binary not found at ${CLAUDE_PLUGIN_ROOT}/bin/tp. 
+Rebuild with: cd /path/to/tp && go build -o /path/to/taskplex/bin/tp ./cmd/tp/
+```
 
 ### Step 4: Monitor and report
 
@@ -77,26 +78,32 @@ After tp completes:
 
 ### Example command construction
 
+Set the base paths first:
+```bash
+TP_BIN="${CLAUDE_PLUGIN_ROOT}/bin/tp.exe"
+TP_DIR="${CLAUDE_PLUGIN_ROOT}/bin"
+```
+
 User says: `/tp implement the billing dashboard`
 ```bash
-tp pipeline "implement the billing dashboard" \
+"$TP_BIN" pipeline "implement the billing dashboard" \
   --task-dir "$(pwd)" \
-  --workflow workflows/design.yaml
+  --workflow "$TP_DIR/workflows/design.yaml"
 ```
 
 User says: `/tp --plan product/phase2-prd.md implement P1 remote meeting transcripts`
 ```bash
-tp pipeline "implement P1 remote meeting transcripts" \
+"$TP_BIN" pipeline "implement P1 remote meeting transcripts" \
   --task-dir "$(pwd)" \
-  --workflow workflows/design.yaml \
+  --workflow "$TP_DIR/workflows/design.yaml" \
   --plan product/phase2-prd.md
 ```
 
 User says: `/tp --light fix the login button`
 ```bash
-tp pipeline "fix the login button" \
+"$TP_BIN" pipeline "fix the login button" \
   --task-dir "$(pwd)" \
-  --workflow workflows/light.yaml
+  --workflow "$TP_DIR/workflows/light.yaml"
 ```
 
 ---
