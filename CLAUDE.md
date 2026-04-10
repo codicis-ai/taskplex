@@ -43,7 +43,13 @@ Missing high-priority SC = automatic FAIL.
 3. **Exploration** — Fast reconnaissance via explore agent → `exploration-summary.md`
 4. **Intent Exploration** — User journeys, approach selection, write `brief.md` + `intent.md` + `success-criteria.json`
 5. **Planning** — Spec writing with intent guardrails, critic review (max 3 rounds), write `success-map.json`
-6. **Implementation** — Parallel workers in isolated sessions, each produces `worker-evidence.json`
+6. **Implementation (Foundation First)**:
+   - Wave 0: Foundation — shared types, database schema, API contract, auth model
+   - Wave 1: Data layer — queries, route handlers (uses Wave 0 types + schema)
+   - Wave 2: Integration — API clients, components (uses Wave 0 contract)
+   - Wave 3: Polish — error handling, tests (stable interfaces from Wave 0-2)
+   - Each worker produces `worker-evidence.json` for SC satisfaction
+   - No-Invention Rule: Wave 1+ workers consume Wave 0, never invent interfaces
 7. **QA** — Migrations, dev server, functional E2E journeys, adversarial verification
 8. **Validation** — Parallel reviewers, traceability resolution, workflow eval, compliance
 9. **Completion** — Git commit, PR, knowledge persistence
