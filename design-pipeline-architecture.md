@@ -1146,6 +1146,338 @@ tp config
 
 The CLI is the primary interface. The app adds: visual kanban, click-to-attach, memplex integration, and persistent history across tasks.
 
+## Agent Pool + Per-Role Configuration
+
+### The User's Agent Pool
+
+Users have multiple coding agent subscriptions. These aren't alternatives — they're a pool of resources available to every step:
+
+```
+User's available agents:
+  ├─ Claude Code → Opus, Sonnet, Haiku
+  ├─ Codex → GPT-5.4, GPT-4.1, GPT-4.1-mini
+  ├─ Gemini CLI → Gemini 3 Pro, Flash, Flash Lite
+  └─ Pi (OpenRouter) → DeepSeek, Qwen, Devstral, 75+ more
+```
+
+Each step picks from the full pool. The agent CLI is just the delivery mechanism.
+
+Example: Opus writes the architecture via Claude, GPT-5.4 via Codex criticises it (different perspective), DeepSeek workers execute via Pi (cheapest), Gemini Flash handles closure (fast structured checks), Sonnet via Claude runs E2E testing (needs Playwright MCP).
+
+### Three Configuration Layers
+
+**Layer 1: `tp setup` — One-time onboarding**
+
+Run once. Discovers installed agents, tests connections, sets role defaults.
+
+```
+$ tp setup
+
+═══ TaskPlex Pipeline Setup ═══
+
+Which coding agents do you have installed?
+  [x] Claude Code (detected)
+  [x] Codex (detected)
+  [x] Gemini CLI (detected)
+  [ ] Cursor
+  [ ] OpenCode
+
+Testing connections...
+  ✓ Claude Code: Opus, Sonnet, Haiku available
+  ✓ Codex: GPT-5.4, GPT-4.1 available
+  ✓ Gemini: Gemini 3 Pro, Flash, Flash Lite available
+
+Do you want to add OpenRouter for additional models?
+  API key: sk-or-v1-...
+  ✓ DeepSeek V3.2, Qwen3-Coder, Devstral available
+
+Model budget preset:
+  1. Premium ($15-20/task) — best model per role
+  2. Standard ($5-8/task) — balanced cost/quality
+  3. Budget ($3-5/task) — cheap execution, strong thinking
+  4. Custom — configure each role manually
+→ 3
+
+Applying Budget preset:
+
+  Role              Agent        Model                  Est. Cost
+  ─────────────     ──────       ──────────────         ─────────
+  architect         claude       claude-opus-4          $3.00
+  critic            codex        gpt-5.4                $0.80
+  planning          claude       claude-sonnet-4        $0.50
+  implementation    pi           deepseek-v3.2          $0.05/worker
+  verification      claude       claude-sonnet-4        $0.50
+  security-review   gemini       gemini-3-pro           $0.30
+  code-review       pi           deepseek-v3.2          $0.05
+  e2e-testing       claude       claude-sonnet-4        $0.50 (Playwright)
+  closure           gemini       gemini-3-flash-lite    $0.03
+  compliance        pi           deepseek-v3.2          $0.03
+
+  Estimated total per Standard task: ~$5.76
+
+Adjust any role? (press Enter to accept, or type role name)
+→ [Enter]
+
+Saved to ~/.taskplex/config.yaml ✓
+```
+
+**Layer 2: `tp config amend` — Change anytime outside a task**
+
+```
+$ tp config amend
+
+Current configuration:
+  architect:      claude / claude-opus-4
+  critic:         codex / gpt-5.4
+  ...
+
+What to change?
+  1. Change a role's agent/model
+  2. Switch budget preset
+  3. Add/remove a provider
+  4. Test all connections
+→ 1
+
+Role: critic
+Agent (claude/codex/gemini/pi): gemini
+Model: gemini-3-pro
+  ⚠ Recommended: high-tier reasoning. Gemini 3 Pro is capable but different style.
+
+Apply? → yes
+Updated. New estimated cost: $5.46/task
+```
+
+Uses the governance amendment system — session tracked, auditable, validated.
+
+**Layer 3: Workflow checkpoint — Inside the task, minimal friction**
+
+After plan approval, before execution starts. One table, one keystroke:
+
+```
+Plan approved ✓
+
+Execution configuration:
+  ┌──────────────┬────────┬───────────────────┬──────────┐
+  │ Role         │ Agent  │ Model             │ Est.     │
+  ├──────────────┼────────┼───────────────────┼──────────┤
+  │ Workers (3)  │ pi     │ deepseek-v3.2     │ ~$0.15   │
+  │ Critic       │ codex  │ gpt-5.4           │ ~$0.80   │
+  │ QA           │ claude │ sonnet-4          │ ~$0.50   │
+  │ Reviews (6)  │ mixed  │ (per config)      │ ~$0.50   │
+  ├──────────────┼────────┼───────────────────┼──────────┤
+  │ Total est.   │        │                   │ ~$5.76   │
+  └──────────────┴────────┴───────────────────┴──────────┘
+
+  Proceed / Adjust / Show full config
+→ [Enter]
+```
+
+Enter to continue. No friction. If the user types "Adjust":
+
+```
+→ Adjust
+Which role? → implementation
+Model: → qwen/qwen3-coder-480b
+  ✓ Updated for this task only. Global config unchanged.
+→ [Enter to proceed]
+```
+
+Per-task adjustments apply to this execution only. Global config stays stable.
+
+### Model Tier Warnings
+
+When a user selects a model below the recommended tier for a role:
+
+```
+Step: architect
+Recommended: high (strong reasoning for architecture design)
+Selected: gemini-3-flash-lite (low tier)
+
+⚠ Model below recommended tier for architect role.
+  Architecture design requires strong multi-component reasoning.
+  This may result in shallow plans that need revision.
+  Proceed? (yes / change model)
+```
+
+Not blocking — informative. Logged to pipeline state as a degradation.
+
+For roles where cheap models are expected (workers, closure):
+
+```
+Step: worker-1
+Recommended: low tier (granular briefs — cheap models work well)
+Selected: deepseek-v3.2
+
+✓ Good fit — implementation workers with exact code briefs work well with cheap models.
+```
+
+No warning. Encouraged.
+
+### Config File Format
+
+```yaml
+# ~/.taskplex/config.yaml
+
+version: 1
+
+agents:
+  claude:
+    type: cli
+    command: claude
+    models: [claude-opus-4, claude-sonnet-4, claude-haiku-4]
+    capabilities: [tools, mcp, subagents]
+    
+  codex:
+    type: cli
+    command: codex
+    models: [gpt-5.4, gpt-4.1, gpt-4.1-mini]
+    capabilities: [tools]
+    
+  gemini:
+    type: cli
+    command: gemini
+    models: [gemini-3-pro, gemini-3-flash, gemini-3-flash-lite]
+    capabilities: [tools]
+    
+  pi:
+    type: sdk
+    provider: openrouter
+    api_key: ${OPENROUTER_API_KEY}
+    models: [deepseek/deepseek-v3.2, qwen/qwen3-coder-480b, google/gemini-3-flash-lite]
+    capabilities: [tools]  # no mcp
+
+roles:
+  architect:
+    agent: claude
+    model: claude-opus-4
+    recommended_tier: high
+    
+  critic:
+    agent: codex
+    model: gpt-5.4
+    recommended_tier: high
+    note: "Different agent for critic provides independent perspective"
+    
+  planning:
+    agent: claude
+    model: claude-sonnet-4
+    recommended_tier: medium
+    
+  implementation:
+    agent: pi
+    model: deepseek/deepseek-v3.2
+    recommended_tier: low
+    note: "Granular briefs — cheap models work well"
+    
+  verification:
+    agent: claude
+    model: claude-sonnet-4
+    recommended_tier: medium
+    requires: [mcp]
+    
+  security-review:
+    agent: gemini
+    model: gemini-3-pro
+    recommended_tier: medium
+    
+  code-review:
+    agent: pi
+    model: deepseek/deepseek-v3.2
+    recommended_tier: medium
+    
+  e2e-testing:
+    agent: claude
+    model: claude-sonnet-4
+    recommended_tier: medium
+    requires: [mcp]
+    
+  closure:
+    agent: gemini
+    model: gemini-3-flash-lite
+    recommended_tier: low
+    
+  compliance:
+    agent: pi
+    model: deepseek/deepseek-v3.2
+    recommended_tier: low
+
+presets:
+  premium:
+    description: "Best model per role ($15-20/task)"
+    roles:
+      architect: { agent: claude, model: claude-opus-4 }
+      critic: { agent: codex, model: gpt-5.4 }
+      implementation: { agent: claude, model: claude-sonnet-4 }
+      verification: { agent: claude, model: claude-sonnet-4 }
+      security-review: { agent: claude, model: claude-sonnet-4 }
+      code-review: { agent: claude, model: claude-sonnet-4 }
+      e2e-testing: { agent: claude, model: claude-sonnet-4 }
+      closure: { agent: claude, model: claude-haiku-4 }
+      compliance: { agent: claude, model: claude-haiku-4 }
+      
+  standard:
+    description: "Balanced cost/quality ($5-8/task)"
+    roles:
+      architect: { agent: claude, model: claude-opus-4 }
+      critic: { agent: codex, model: gpt-5.4 }
+      implementation: { agent: pi, model: deepseek/deepseek-v3.2 }
+      verification: { agent: claude, model: claude-sonnet-4 }
+      security-review: { agent: gemini, model: gemini-3-pro }
+      code-review: { agent: pi, model: deepseek/deepseek-v3.2 }
+      e2e-testing: { agent: claude, model: claude-sonnet-4 }
+      closure: { agent: gemini, model: gemini-3-flash-lite }
+      compliance: { agent: pi, model: deepseek/deepseek-v3.2 }
+      
+  budget:
+    description: "Cheap execution, strong thinking ($3-5/task)"
+    roles:
+      architect: { agent: claude, model: claude-opus-4 }
+      critic: { agent: pi, model: deepseek/deepseek-v3.2 }
+      implementation: { agent: pi, model: deepseek/deepseek-v3.2 }
+      verification: { agent: claude, model: claude-sonnet-4 }
+      security-review: { agent: pi, model: deepseek/deepseek-v3.2 }
+      code-review: { agent: pi, model: deepseek/deepseek-v3.2 }
+      e2e-testing: { agent: claude, model: claude-sonnet-4 }
+      closure: { agent: pi, model: deepseek/deepseek-v3.2 }
+      compliance: { agent: pi, model: deepseek/deepseek-v3.2 }
+```
+
+### Configuration Commands
+
+| Command | When | What |
+|---------|------|------|
+| `tp setup` | First time | Discover agents, test connections, pick preset, save config |
+| `tp config amend` | Anytime outside a task | Change role assignments, models, providers. Governed + audited. |
+| `tp config show` | Anytime | Show current config with per-role cost estimates |
+| `tp config test` | Anytime | Re-test all agent connections |
+| `tp config preset <name>` | Anytime | Apply a preset (premium/standard/budget) |
+| Workflow checkpoint | During task after plan approval | One table + Enter. Adjust applies to this task only. |
+
+### How Roles Resolve in the YAML
+
+Workflows reference roles, not specific agents/models:
+
+```yaml
+steps:
+  - name: worker-1
+    role: implementation        # resolved from config → pi / deepseek-v3.2
+    agent: implementation-agent # TaskPlex agent definition (system prompt + tools)
+    
+  - name: security-review
+    role: security-review       # resolved from config → gemini / gemini-3-pro
+    agent: security-reviewer    # TaskPlex agent definition
+```
+
+The engine resolves: role → config lookup → (agent CLI, model) → executor selection → session spawn.
+
+Per-step overrides in the YAML still work:
+```yaml
+  - name: special-review
+    role: security-review
+    model: anthropic/claude-opus-4  # override for this specific step
+    agent_cli: claude               # override executor
+```
+
 ## Resolved Decisions
 
 | # | Question | Decision |
