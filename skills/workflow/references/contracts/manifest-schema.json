@@ -226,6 +226,8 @@
         "typecheck": { "type": "string", "enum": ["pending", "passed", "failed", "skipped"] },
         "lint": { "type": "string", "enum": ["pending", "passed", "failed", "skipped"] },
         "tests": { "type": "string", "enum": ["pending", "passed", "failed", "skipped"] },
+        "successContract": { "type": "string" },
+        "successMapping": { "type": "string" },
         "conventionCompliance": { "type": "string" },
         "security": { "type": "string" },
         "closure": { "type": "string" },
@@ -233,6 +235,7 @@
         "hardening": { "type": "string" },
         "compliance": { "type": "string" },
         "traceability": { "type": "string" },
+        "workflowEval": { "type": "string" },
         "readiness": { "type": "string" },
         "customGates": { "type": "string" }
       },
@@ -292,6 +295,18 @@
           }
         }
       }
+    },
+    "successContractPresent": {
+      "type": "string",
+      "description": "Whether success-criteria.json was written during design."
+    },
+    "successMapPresent": {
+      "type": "string",
+      "description": "Whether success-map.json was written during planning."
+    },
+    "workflowEvalPresent": {
+      "type": "string",
+      "description": "Whether workflow-eval.json was written during post-validation."
     },
     "buildCommands": {
       "type": "object",

@@ -1,9 +1,31 @@
 {
-  "name": "codicis-ai",
+  "name": "taskplex",
+  "owner": {
+    "name": "codicis-ai"
+  },
+  "metadata": {
+    "description": "TaskPlex — structured workflow orchestration for AI coding agents.",
+    "version": "1.0.0"
+  },
   "plugins": [
     {
       "name": "taskplex",
-      "path": "."
+      "source": "./",
+      "description": "Design-first workflow orchestration with quality gates, adversarial verification, and multi-agent coordination.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Jas Naidu"
+      },
+      "keywords": [
+        "workflow",
+        "orchestration",
+        "governance",
+        "multi-agent",
+        "quality-gates",
+        "verification",
+        "design-first"
+      ],
+      "category": "workflow"
     }
   ]
 }

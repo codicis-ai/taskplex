@@ -1,177 +1,209 @@
 # TaskPlex
 
-Go-based workflow harness for governed AI software delivery. Design-first development with deterministic enforcement, multi-agent coordination, and per-step model selection.
+**Stop LLM coding agents from shipping half-finished, overengineered, or drive-by-refactored work.**
+
+TaskPlex is a Claude Code plugin that wraps your coding agent in a governed workflow: design before code, explicit success criteria, foundation-first implementation, adversarial verification, and parallel review before commit. Every step is gated — if the required artifacts aren't there, the pipeline stops.
+
+## The Problem
+
+Left alone, LLM coding agents tend to:
+
+- **Assume instead of asking.** Pick one interpretation silently and run with it.
+- **Overcomplicate.** Ship 200 lines when 50 would do. Invent abstractions for single-use code.
+- **Refactor adjacent code.** Touch files they were supposed to leave alone. Change comments they don't understand.
+- **Declare victory too early.** "Tests pass" without having written a test that actually exercises the change.
+- **Lose the thread across phases.** The brief says one thing, the implementation does another, the review checks neither.
+
+TaskPlex doesn't trust the agent to handle any of that. It encodes the discipline as workflow, artifacts, and gates.
 
 ## Install
 
 ```
-/plugin marketplace add github.com/codicis-ai/taskplex
+/plugin marketplace add codicis-ai/taskplex
 /plugin install taskplex
 ```
 
-The plugin provides the `/taskplex:tp` entry point. The Go harness (`tp` binary) manages the full workflow.
-
 Uninstall:
+
 ```
 /plugin uninstall taskplex
 ```
 
-## Commands
+## What You Get
 
-| Command | What It Does |
+Six commands, installable as a Claude Code plugin, backed by 23 specialized agents and a hook-based enforcement layer.
+
+| Command | What it does |
 |---------|-------------|
-| `/taskplex:tp [flags] [task]` | **Build something.** Triggers the Go harness which manages design, planning, implementation, QA, validation, and completion. Flags: `--light`, `--standard` (default), `--blueprint`. |
-| `/taskplex:plan [description]` | **Think before building.** Strategic planning only — research, product context, architecture, critic review. Produces a plan file for later execution. |
-| `/taskplex:drift` | **Check codebase health.** Read-only scan for convention violations, drift, dead code. |
-| `/taskplex:evaluate [mode]` | **Audit what exists.** Two modes: `audit` (investigate quality) and `review` (validate against a brief). |
-| `tp setup` | **Configure agents and models.** Discover installed coding agents, test connections, set per-role model defaults. |
-| `tp config amend` | **Change configuration.** Modify role assignments, models, providers anytime. |
-| `tp status` | **Monitor execution.** ASCII kanban board of pipeline progress. |
-| `tp peek <step>` | **Inspect a step.** See live output from any running step. |
-| `tp attach <step>` | **Enter a step.** Connect your terminal to a running step's session. |
+| `/tp [flags] [task]` | **Build something end-to-end.** Runs the full pipeline: design → planning → implementation → QA → validation → completion. Flags pick the route: `--light`, `--standard` (default), `--blueprint`, plus `--plan <path>` to hydrate from an existing PRD and `--skip-design` to jump to execution. |
+| `/plan [description]` | **Think before building.** Research, product brief, architecture, strategic critic — no code written. Produces a plan file for later execution. |
+| `/drift` | **Check codebase health.** Read-only scan for convention violations, architectural drift, dead code, dependency hygiene. Produces a drift-index score. |
+| `/evaluate [mode]` | **Audit what exists.** Two modes: `audit` (investigate quality) and `review` (validate against a brief). |
+| `/frontend` | **UI work with design-system discipline.** Component architecture, accessibility, responsive patterns, visual quality. Works standalone in any coding agent; integrates with `/tp` when run inside a pipeline. |
+| `/workflow` | **Internal** — phase files and contracts loaded by the pipeline. Not user-invocable. |
 
-## Architecture
+## How It Works
 
-TaskPlex is a **Go binary (`tp`)** that owns the entire workflow lifecycle. It is not a set of hooks orchestrating an LLM — it is deterministic Go code making all coordination decisions.
+### 1. Design phase (never skipped on standard and blueprint routes)
+
+Before any code is written, the pipeline:
+
+- Asks you to pick a **quality profile** (Lean, Standard, Enterprise) — this determines which reviewers run later
+- Runs a **convention scan** and asks you to confirm the conventions it found
+- Explores user intent and captures it as `brief.md` (requirements), `intent.md` (guardrails), and `success-criteria.json` (structured SC-* criteria that flow through every later phase)
+- On the Blueprint route, also runs an `explore` agent for cheap codebase reconnaissance before the architect runs
+
+Design asks questions. It doesn't guess.
+
+### 2. Planning phase
+
+A planning agent writes the spec against the brief and intent, then a **strategic or tactical critic** reviews it (max 3 rounds, bounded). The user approves. The result: `spec.md` + `success-map.json` (SC-* → code targets + verification).
+
+### 3. Implementation — foundation-first
+
+Workers run in parallel, but in **waves**:
+
+- **Wave 0 — Foundation.** Shared types, database schema, API contract, auth model.
+- **Wave 1 — Data layer.** Queries, route handlers. Uses Wave 0 types and schema.
+- **Wave 2 — Integration.** API clients, components. Uses Wave 0 contract.
+- **Wave 3 — Polish.** Error handling, tests. Built on stable Wave 0–2 interfaces.
+
+Each worker produces `worker-evidence.json` documenting which success criteria their code satisfies. **No-invention rule:** Wave 1+ workers consume Wave 0, they never reinvent types or contracts.
+
+### 4. QA
+
+Smoke test → functional journey walkthrough → adversarial verification. Bug-fix loop is bounded (max 3 rounds). Output: `qa-report.md`.
+
+### 5. Validation — parallel reviewers
+
+Reviewers run in parallel. Which reviewers run depends on the quality profile and file patterns:
+
+| Profile | Always runs | Conditional (file patterns) |
+|---------|------------|----------------------------|
+| Lean | Build checks | — |
+| Standard | Security, closure, code review | Database (SQL), e2e (UI), user-workflow (routing) |
+| Enterprise | Standard + hardening + compliance | All conditional reviewers |
+
+All reviews inherit `review-standards` — anti-rationalization rules: reading is not verification, types don't validate runtime, evidence over explanation.
+
+The `closure-agent` scores each SC-* from the intent contract as `SATISFIED`, `PARTIAL`, `MISSING`, or `UNSCORABLE`. Missing high-priority criteria = automatic FAIL. The results land in `traceability.json` — a resolved evidence matrix from success criteria → code → verdict.
+
+### 6. Completion
+
+Git commit with a message derived from the brief + traceability. Optional PR. Knowledge persistence to your project memory (if wired up).
+
+## Enforcement
+
+TaskPlex enforces the workflow via **Claude Code hooks** — not by asking the LLM to behave:
+
+- **`tp-design-gate`** (PreToolUse, Edit/Write) — blocks edits when required design artifacts don't exist yet. You can't skip design by just starting to write code.
+- **`tp-pre-commit`** (PreToolUse, Bash) — blocks `git commit` unless the required review artifacts for the current quality profile exist.
+- **`tp-prompt-check`** (UserPromptSubmit) — catches when you're trying to skip ahead.
+- **`tp-session-start`** (SessionStart) — detects in-progress tasks on resume/compact and injects recovery context so you pick up where you left off.
+- **`tp-heartbeat`** / **`tp-stop`** / **`tp-pre-compact`** / **`start-task-sentinel`** — lifecycle and state-checkpoint hooks.
+
+Gates are **artifact-based**, not judgment-based. The hook checks whether a file exists. If it doesn't, the edit is blocked with a message explaining what's missing. No LLM in the control loop.
+
+## Intent Contract
+
+Every task carries a success contract through all phases:
 
 ```
-User types /taskplex:tp in their coding agent
-  │
-  └─ Go harness takes over
-      │
-      ├─ DESIGN (design.yaml)
-      │   ├─ Route selection (ask user)
-      │   ├─ Manifest creation
-      │   ├─ Context loading (INTENT.md, CONVENTIONS.md, memplex)
-      │   ├─ Quality profile selection (ask user)
-      │   ├─ Convention scan + user confirmation
-      │   ├─ Intent exploration + approach selection
-      │   ├─ Brief writing
-      │   └─ Each step: allowed/blocked tools, required artifacts, interaction mode
-      │
-      ├─ PLANNING (per-route workflow)
-      │   ├─ Spec writing (planning agent)
-      │   ├─ Critic review (bounded, max 3 rounds)
-      │   ├─ User approval
-      │   └─ Test plan (verification agent)
-      │
-      ├─ IMPLEMENTATION (parallel workers)
-      │   ├─ Workers execute in isolated sessions
-      │   ├─ Per-worker artifact requirements
-      │   ├─ Coherence check + build gate
-      │   └─ Tactical critic
-      │
-      ├─ QA
-      │   ├─ Smoke test → journey walkthrough → adversarial verification
-      │   ├─ Bug fix loop (max 3 rounds)
-      │   └─ QA report
-      │
-      ├─ VALIDATION (parallel reviewers)
-      │   ├─ Security, closure, code review (parallel)
-      │   ├─ Conditional: database, e2e, user-workflow (file-pattern triggered)
-      │   ├─ Hardening + compliance
-      │   └─ Build fixer if reviews find issues
-      │
-      └─ COMPLETION
-          └─ Git commit + PR
+design/        → success-criteria.json      (structured SC-* with observable outcomes)
+planning/      → success-map.json           (SC-* mapped to code targets + verification)
+implementation → worker-evidence.json       (per-worker evidence of SC satisfaction)
+validation/    → traceability.json          (resolved evidence matrix: SC → code → status)
+completion/    → workflow-eval.json         (process self-evaluation)
 ```
 
-### What Makes This Different
-
-**No LLM in the control plane.** The Go binary reads YAML workflows, spawns agent sessions, checks artifacts, manages retries, and enforces transitions. It does not ask an LLM what to do next.
-
-**One enforcement hook.** `tp-compliance.mjs` calls `tp state check` before every tool call. The Go binary returns allow/deny based on the current step's rules (allowed_tools, blocked_tools, allowed_writes). This single hook replaces the need for 9 separate hooks.
-
-**Declarative workflows.** Every step defines what tools are allowed, what artifacts are required, what interaction mode to use (question/autonomous/interactive), and what happens on completion. The engine enforces these deterministically.
-
-**Per-step model selection.** Each step can use a different coding agent and model. Claude Opus for architecture, Codex GPT-5.4 for critic review, DeepSeek for cheap workers, Gemini for fast structured checks — all in the same pipeline.
-
-## Execution Routes
-
-| Route | Flag | What Happens |
-|-------|------|-------------|
-| **Light** | `--light` | Minimal design, single worker, basic QA |
-| **Standard** | default | Full design, 1-3 parallel workers, critic review, full validation |
-| **Blueprint** | `--blueprint` | Explore pre-pass, conditional architect, multi-agent waves, enterprise validation |
+This is how TaskPlex solves **goal-driven execution** — verifiable success criteria, not "make it work." The closure agent scores each SC against actual evidence, not LLM narration.
 
 ## Quality Profiles
 
-Selected by the user during design (never auto-assigned silently):
+You pick the profile at the start of each task. Never auto-assigned.
 
-| Profile | Validation Agents | Required Artifacts Before Commit |
-|---------|------------------|--------------------------------|
+| Profile | Validators | Required artifacts before commit |
+|---------|-----------|----------------------------------|
 | **Lean** | Build checks only | None |
 | **Standard** | Security, closure, code review | `security.md` + `closure.md` + `code-quality.md` |
 | **Enterprise** | + hardening + compliance | All of standard + `hardening/report.md` + `compliance.md` |
 
-Conditional reviewers trigger based on file patterns: database review for SQL, e2e for UI files, user-workflow for routing files.
+Conditional reviewers (database, e2e, user-workflow) trigger automatically based on file patterns when the profile is Standard or Enterprise.
 
-## Multi-Agent Model Selection
+## Agents
 
-Users configure which coding agent and model runs each role:
+The plugin ships 23 agent definitions that the pipeline spawns as isolated sessions.
 
-```yaml
-# ~/.taskplex/config.yaml
-roles:
-  architect:     { agent: claude, model: claude-opus-4 }
-  critic:        { agent: codex, model: gpt-5.4 }        # different perspective
-  implementation:{ agent: pi, model: deepseek-v3.2 }     # cheap for workers
-  security:      { agent: gemini, model: gemini-3-pro }
-  e2e-testing:   { agent: claude, model: claude-sonnet-4 } # needs Playwright MCP
-  closure:       { agent: pi, model: gemini-3-flash-lite } # fast, structured
-```
+**Design & planning:** `explore`, `architect`, `planning-agent`, `strategic-critic`, `tactical-critic`, `researcher`
 
-Set up with `tp setup`. Change anytime with `tp config amend`. Quick checkpoint during workflow before execution starts.
+**Implementation:** `implementation-agent`, `build-fixer`, `merge-resolver`
+
+**Verification:** `verification-agent` (test-plan + verify modes)
+
+**Review:** `security-reviewer`, `closure-agent`, `code-reviewer`, `hardening-reviewer`, `database-reviewer`, `e2e-reviewer`, `user-workflow-reviewer`, `compliance-agent`
+
+**Shared:** `review-standards` (inherited by all reviewers — anti-rationalization rules)
+
+**Utility:** `drift-scanner`, `session-guardian`
+
+Each agent has a narrow job and explicit input/output contracts. No agent plans and implements; no agent implements and reviews.
 
 ## Repository Layout
 
 ```
-taskplex/                          # This repo — plugin + policy assets
-├── .claude-plugin/                # Plugin manifest
-├── agents/                        # Agent definitions (.md) — system prompts + tool config
-├── hooks/                         # tp-compliance.mjs — single governance hook
-├── skills/                        # Entry points (/tp, /plan, /drift, /evaluate)
-│   └── workflow/references/       # Phase files + contracts (consumed by Go harness)
-├── docs/                          # Design documents + PRDs
-└── backup/                        # File backups
-
-tp/                                # Separate repo — Go harness (codicis-ai/tp)
-├── cmd/tp/                        # CLI entry point
-├── internal/                      # Engine, executors, governance, state, session, IPC
-├── workflows/                     # YAML workflow definitions
-├── hooks/                         # tp-compliance.mjs (deployed copy)
-└── codex/ cursor/ opencode/       # Runtime adapter scaffolds
+taskplex/
+├── .claude-plugin/        # Plugin + marketplace manifests
+├── .mcp.json              # MCP server config (Playwright for e2e review)
+├── agents/                # 23 agent definitions (system prompts)
+├── hooks/                 # Enforcement hooks — design gate, pre-commit, session lifecycle
+└── skills/                # Entry points: /tp, /plan, /drift, /evaluate, /frontend, /workflow
+    └── workflow/references/
+        ├── phases/        # Phase files (init, planning, implementation, qa, validation, completion)
+        └── contracts/     # Contracts (intent, success criteria, manifest schema, handoffs)
 ```
 
-## Design Documents
+Everything in the repo is directly consumed by the plugin at runtime. There are no build artifacts, no external binaries, and no design documents in the public tree.
 
-| Document | Status |
-|----------|--------|
-| `design-pipeline-architecture.md` | Active — Go harness architecture, dual-executor model, agent pool config |
-| `taskplex-documentation.md` | Legacy — needs rewrite for Go-first architecture |
-| `REFERENCE.md` | Legacy — needs status tagging per component |
-| `multi-runtime-plan.md` | Partially active — multi-runtime concept valid, delivery mechanism changed |
+## Current State
 
-## Codicis AI Organization
+**Working today (installed via the plugin):**
+
+- All 6 skills (`/tp`, `/plan`, `/drift`, `/evaluate`, `/frontend`, `/workflow`)
+- 23 agents wired into the pipeline
+- 8 lifecycle and enforcement hooks
+- Quality-profile-driven validator selection
+- Intent-contract chain (success-criteria → success-map → worker-evidence → traceability → workflow-eval)
+- Foundation-first worker decomposition
+
+**Internal, not public:**
+
+- A prototype Go-based pipeline engine exists internally but is not shipped with this plugin and has no public repo. The plugin as distributed runs entirely on Claude Code hooks and skills — no external binary required.
+
+**Designed, not yet built:**
+
+- A dedicated companion app for live pipeline monitoring
+- A redesigned enforcement framework for v2
+
+When those are ready, they'll ship separately. Nothing in this README depends on them — the current plugin is self-contained and usable today.
+
+## Known Gaps & Roadmap
+
+TaskPlex currently does not explicitly encode two disciplines that matter for LLM coding quality:
+
+1. **Simplicity First** — there is no rule constraining the *style* of code workers write. A worker could ship an overengineered 200-line solution to a 50-line problem and only the review phase would catch it.
+2. **Surgical Changes** — the workflow restricts *which files* a worker can touch, but not *what they do inside* a file. A worker assigned to edit `auth.ts` can refactor unrelated functions in the same file.
+
+These will be added as an **implementation-discipline reference** (inherited by implementation-agent, build-fixer, and merge-resolver) in a near-term update.
+
+## Codicis AI
 
 | Repo | Product |
 |------|---------|
-| `codicis-ai/taskplex` | TaskPlex — plugin + policy assets (this repo) |
-| `codicis-ai/tp` | Pipeline engine — Go harness |
-| `codicis-ai/memplex` | Project memory and intelligence |
-| `codicis-ai/taskwright` | AI personal assistant |
-| `codicis-ai/memwright` | Memory desktop application |
-
-## Status
-
-**Active runtime**: Go harness (`tp`) — full workflow engine with design, execution, QA, validation. Single governance hook (`tp-compliance.mjs`). Declarative YAML workflows. Native session management (no tmux). Multi-executor support (Claude, Codex, Gemini, Pi SDK).
-
-**Policy assets (this repo)**: Agent definitions, phase files, contracts, review standards — consumed by the Go harness as system prompts and policy inputs.
-
-**Adapter scaffolds**: OpenCode, Cursor, Codex — placeholder directories for runtime integration.
-
-**Designed, not yet built**: Pi SDK executor integration, `tp setup` onboarding, dashboard app integration, full multi-runtime adapter testing.
+| `codicis-ai/taskplex` | TaskPlex — this repo |
+| `codicis-ai/memplex` | Project memory and intelligence (private) |
+| `codicis-ai/taskwright` | AI personal assistant (private) |
+| `codicis-ai/memwright` | Memory desktop application (private) |
 
 ## License
 
-Private repository. All rights reserved.
+All rights reserved.

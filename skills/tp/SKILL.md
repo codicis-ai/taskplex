@@ -1,3 +1,8 @@
+---
+name: tp
+description: TaskPlex pipeline — the single entry point for building something end-to-end. Runs design, planning, implementation, QA, validation, and completion as a governed workflow with quality gates. Flags select the execution route (--light, --standard, --blueprint) and let you hydrate from an existing plan (--plan) or skip straight to execution (--skip-design). Use whenever the user wants to build, implement, or ship a feature, fix, or change — "build X", "implement Y", "add this feature", "fix this bug", "ship this".
+---
+
 # /tp — TaskPlex Pipeline
 
 **Command**: `/tp [flags] [task description]`

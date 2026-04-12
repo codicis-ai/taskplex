@@ -75,21 +75,39 @@ Before running any validation step, verify all required artifacts exist and are 
 
 ## Step 0.5: Traceability Gate (standard + enterprise profiles)
 
-**Skip for lean profile.** Build or update `traceability.json` from brief → spec → modified files → tests → reviews.
+**Skip for lean profile.** Build or update `traceability.json` as the resolved evidence matrix from success contract → success map → worker evidence → verification → reviews.
 
-**Orchestrator action** (no agent needed):
-1. Read `brief.md` — extract all US-N, AC-N.M, SC-N, NFR-N identifiers
-2. Read `spec.md` — extract verification plan mapping
-3. Cross-reference with `manifest.modifiedFiles` and test files
-4. For each requirement, determine status: `covered`, `partial`, or `missing`
+**Validation action**:
+1. Read `success-criteria.json` and `success-map.json`
+2. Read `pipeline/*/worker-evidence.json` if present
+3. Read `qa-report.md` and reviewer outputs
+4. For each `SC-*`, resolve:
+   - planned code targets
+   - actual changed files
+   - verification evidence
+   - final status: `SATISFIED`, `PARTIAL`, `MISSING`, or `UNSCORABLE`
 5. Write `.claude-task/{taskId}/traceability.json`
 
 **Gate logic:**
-- Any `missing` requirement → validation FAIL
-- `partial` allowed with user override → logged as degradation
-- All `covered` → PASS
+- Any high-priority `MISSING` success criterion → validation FAIL
+- `PARTIAL` allowed only with explicit degradation / override policy
+- All high-priority items `SATISFIED` and no major unmapped files → PASS
 
 Update manifest: `validation.traceability`.
+
+## Step 0.75: Workflow Eval Gate (standard + enterprise profiles)
+
+After reviewer passes, write `workflow-eval.json` to score the process itself:
+- route fit
+- architect necessity
+- research necessity
+- contract quality
+- mapping quality
+- review yield
+- unnecessary escalation
+- unmapped file risk
+
+Update manifest: `validation.workflowEval`.
 
 ## Step 1: Build Validation (ALL)
 

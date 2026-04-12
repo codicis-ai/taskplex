@@ -1,3 +1,8 @@
+---
+name: review-standards
+description: Shared review standards inherited by every review agent (security, closure, code, hardening, database, e2e, user-workflow, compliance). Codifies anti-rationalization rules — reading is not verification, probably is not verified, types don't validate runtime, evidence over explanation. Not invoked directly; included by other review agents as a system-prompt fragment.
+---
+
 # Review Standards (included by all review agents)
 
 ## Anti-Rationalization Rules

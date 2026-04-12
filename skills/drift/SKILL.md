@@ -1,3 +1,8 @@
+---
+name: drift
+description: Read-only codebase drift scanner. Detects convention violations, architectural drift, dependency health issues, dead code, and hygiene problems. Produces a drift index score and prioritized recommendations. Use when the user asks to "scan for drift", "check codebase health", "audit conventions", "find dead code", "architectural audit", or "is the codebase healthy".
+---
+
 # /drift — Codebase Drift Scanner
 
 **Command**: `/drift`

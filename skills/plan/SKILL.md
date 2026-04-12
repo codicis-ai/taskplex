@@ -1,3 +1,8 @@
+---
+name: plan
+description: Strategic thinking and architecture for any scope — from exploring a new idea to designing a full product. Unified pre-implementation flow covering research, product brief, architecture, and critic review. Produces an approved plan file for later execution via /tp. Use when the user wants to plan, design, or think something through before building — "plan this out", "design the architecture", "write a PRD", "research X before we build it", "what's the best approach to Y".
+---
+
 # /plan - Strategic Thinking & Architecture
 
 **Command**: `/plan [idea, problem, or description]`
@@ -321,9 +326,85 @@ Write to `.claude-task/plans/PLAN-{id}-intent.md`:
 {If no brief: "No product brief — plan based on user description and interview."}
 ```
 
-### Step 3.4: Architect Designs Within Guardrails
+### Step 3.4: Explorer Pre-Pass (MANDATORY)
+
+Before using any expensive planning model, map the target area cheaply.
+
+**Agent**: explore (haiku)
+
+1. Read `${CLAUDE_PLUGIN_ROOT}/agents/explore.md` yourself
+2. Spawn explorer with the file contents embedded in the prompt:
+
+```
+Task({
+  subagent_type: 'general-purpose',
+  model: 'haiku',
+  prompt: `
+    [PASTE CONTENTS OF explore.md HERE]
+
+    TASK: Produce a planning reconnaissance summary for this plan.
+    Read the plan intent file: .claude-task/plans/PLAN-{id}-intent.md
+    {If product/brief.md exists: Read product/brief.md for product context}
+    Identify the relevant local files, existing patterns, integration points,
+    coupled/shared files, and whether external research is actually needed.
+    Write .claude-task/plans/PLAN-{id}-exploration-summary.md
+  `
+});
+```
+
+Present the explorer's findings inline in 5-10 lines.
+
+### Step 3.5: Conditional External Research
+
+Only run research if the explorer or your own review surfaced one of:
+- external API uncertainty
+- new dependency choice
+- version migration
+- unfamiliar best-practice question
+- explicit user request for research
+
+If none apply, skip this step.
+
+**Agent**: researcher (sonnet)
+
+If triggered:
+1. Read `${CLAUDE_PLUGIN_ROOT}/agents/researcher.md` yourself
+2. Spawn researcher with the file contents embedded in the prompt:
+
+```
+Task({
+  subagent_type: 'general-purpose',
+  model: 'sonnet',
+  prompt: `
+    [PASTE CONTENTS OF researcher.md HERE]
+
+    TASK: Research only the external questions needed for this plan.
+    PLAN INTENT: .claude-task/plans/PLAN-{id}-intent.md
+    EXPLORATION SUMMARY: .claude-task/plans/PLAN-{id}-exploration-summary.md
+    {If product/brief.md exists: PRODUCT BRIEF: product/brief.md}
+    Write research files under .claude-task/plans/PLAN-{id}-research/
+  `
+});
+```
+
+Summarize only the findings that affect design decisions.
+
+### Step 3.6: Opus Gate
+
+Use the architect only if one of these is true:
+- The change spans multiple subsystems
+- Multiple viable architectures remain after exploration/research
+- Worker decomposition is non-obvious
+- Wave decomposition is needed
+- There are meaningful product/technical tradeoffs still unresolved
+
+If none apply, skip architect and draft the plan from intent + exploration (+ research if any).
+
+### Step 3.7: Architect Designs Within Guardrails (conditional)
 
 **Agent**: architect (opus)
+
+Only run this step if the Opus Gate above is met.
 
 1. Read `${CLAUDE_PLUGIN_ROOT}/agents/architect.md` yourself
 2. Spawn architect with the file contents embedded in the prompt:
@@ -348,6 +429,10 @@ Task({
     Do NOT propose alternatives to decisions the user already made.
     Focus your design work on the areas the user left open.
 
+    ## Prepared Inputs
+    Read .claude-task/plans/PLAN-{id}-exploration-summary.md first.
+    {If research exists: Read .claude-task/plans/PLAN-{id}-research/*.md}
+
     {If product/brief.md exists:}
     ## Product Context
     Read product/brief.md for user profiles, journeys, contract, and feature assessment.
@@ -356,26 +441,19 @@ Task({
     The brief's contract defines what success looks like for users.
 
     Your job:
-    1. Explore the codebase to understand current state
-    2. Research the problem space
-    3. Design 1-3 strategic approaches with tradeoffs (within the user's guardrails)
+    1. Resolve the open architecture decisions
+    2. Design 1-3 strategic approaches with tradeoffs (within the user's guardrails)
+    3. Recommend one approach
     4. Write your analysis to: .claude-task/plans/PLAN-{id}-draft.md
 
-    Structure your draft:
-    - Problem Statement (what and why — must match the intent file)
-    - Current State (what exists today)
-    - Approaches (1-3 options with pros/cons — only for decisions the user left open)
-    - Recommended Approach (pick one, justify)
-    - High-Level Steps (strategic, not tactical)
-    - Risks and Mitigations
-    - Open Questions (if any)
+    Do NOT do broad repo exploration or broad external research unless a cited input is insufficient.
 
     Return ONLY: "DRAFT READY" + 3-line summary of recommended approach.
   `
 });
 ```
 
-### Step 3.5: User Reviews Draft
+### Step 3.8: User Reviews Draft
 
 1. Read `.claude-task/plans/PLAN-{id}-draft.md`
 2. Present the FULL draft — output every section. Do NOT summarize or truncate.

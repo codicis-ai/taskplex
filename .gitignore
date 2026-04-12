@@ -9,3 +9,6 @@ bin/agents/
 bin/workflows/
 bin/contracts/
 bin/*.mjs
+
+# Internal design work — not for public repo
+_internal/

@@ -84,8 +84,8 @@ The route was set during init from user flags. Read `manifest.executionMode`:
 | Route | When | What happens |
 |-------|------|--------------|
 | `light` | `--light` flag | Orchestrator writes minimal spec → single implementation agent → self-review |
-| `standard` | Default (no flag, or `--standard`/`--team`) | Planning agent writes spec + sections → spec critic → 1-3 implementation agents (multi-agent parallel) → mandatory tactical critic |
-| `blueprint` | `--blueprint`, `--architect`, or `--deep` flag | Opus architect → strategic + tactical critics → multi-agent implementation + worktrees + waves |
+| `standard` | Default (no flag, or `--standard`/`--team`) | Explore pre-pass (haiku) → planning agent writes spec + sections → optional researcher → spec critic → 1-3 implementation agents → mandatory tactical critic |
+| `blueprint` | `--blueprint`, `--architect`, or `--deep` flag | Explore pre-pass (haiku) → optional researcher → conditional Opus architect for architecture-only decisions → strategic + tactical critics → multi-agent implementation + worktrees + waves |
 
 **Legacy mapping**: If `manifest.executionMode` contains old values, map them: `single→standard`, `parallel→standard`, `team→standard`, `architect→blueprint`, `prd→blueprint`.
 
@@ -276,7 +276,21 @@ TaskCreate: "Build gate — typecheck + lint"
 
 ## Standard Route
 
-### Phase A: Planning Agent with Section Assignment
+### Phase A: Exploration Pre-Pass
+
+Before planning, cheaply map the target area so higher-cost agents do not rediscover the repo.
+
+> "Spawning the explore agent to scan the target area. This typically takes 2-4 minutes.
+> It will identify relevant files, existing patterns, shared risks, and whether external research is needed."
+
+> Spawn explore (haiku) from ${CLAUDE_PLUGIN_ROOT}/agents/explore.md
+  Context: brief.md path, taskId, target area hints from the brief
+  Writes: .claude-task/{taskId}/exploration-summary.md
+  Returns: "EXPLORATION COMPLETE. Primary area: X. Research needed: yes|no."
+
+After return: present key findings inline and use `exploration-summary.md` as a required planning input.
+
+### Phase B: Planning Agent with Section Assignment
 
 **Pre-spawn status** (tell the user what's happening):
 > "Spawning the planning agent to design the implementation. This typically takes 3-8 minutes.
@@ -287,15 +301,15 @@ TaskCreate: "Build gate — typecheck + lint"
 Spawn the planning agent in multi-agent mode. The planning agent identifies independent sections and writes file ownership.
 
 > Spawn planning-agent (sonnet) from ${CLAUDE_PLUGIN_ROOT}/agents/planning-agent.md
-  Context: brief.md path, taskId, designDepth, qualityProfile, mode: "multi-agent"
+  Context: brief.md path, exploration-summary.md path, taskId, designDepth, qualityProfile, mode: "multi-agent"
   Writes: .claude-task/{taskId}/spec.md, .claude-task/{taskId}/sections.json, .claude-task/{taskId}/file-ownership.json, .claude-task/{taskId}/conventions-snapshot.json
   Returns: "PLANNING COMPLETE. Spec: {path}. Sections: {N}. Files affected: {N}. Key decisions: {bullets}"
 
 Set `manifest.planFile = "spec.md"`.
 
-### Phase A.1: Research (conditional)
+### Phase B.1: Research (conditional)
 
-**Skip if**: All technologies already in codebase, or cm has recent research.
+**Skip if**: `exploration-summary.md` says research is not needed, all technologies are already in codebase, or cm has recent research.
 
 **Research triggers** (any of these):
 - New dependency not in codebase
@@ -308,13 +322,13 @@ If triggered:
 > "Spawning researcher to investigate {topics}. This typically takes 2-5 minutes."
 
 > Spawn researcher (sonnet) from ${CLAUDE_PLUGIN_ROOT}/agents/researcher.md
-  Context: brief.md, spec.md, package.json deps, CONVENTIONS.md, research questions
+  Context: brief.md, exploration-summary.md, spec.md, package.json deps, CONVENTIONS.md, research questions
   Writes: .claude-task/{taskId}/research/*.md
   Returns: "RESEARCH COMPLETE. Questions: N. Key findings: {bullets}"
 
 After researcher returns: **present key findings inline** (don't just say "research complete"). Summarize the findings that affect the plan.
 
-### Phase A.2: Spec Critic (mandatory — bounded iteration, max 3 rounds)
+### Phase B.2: Spec Critic (mandatory — bounded iteration, max 3 rounds)
 
 After planning agent returns, spawn a spec reviewer in a feedback loop:
 
@@ -350,7 +364,7 @@ LOOP:
 
 **CRITICAL**: The `criticCompleted` flag is enforced by a hard gate in `tp-design-gate.mjs`. If this flag is not set, ALL source file writes during implementation will be blocked. The gate also detects review artifacts as a fallback, but setting the flag explicitly is the correct path.
 
-### Phase A.3: Pre-Implementation Acknowledgment (MANDATORY)
+### Phase B.3: Pre-Implementation Acknowledgment (MANDATORY)
 
 **Present a structured working summary — not the full spec, not a 3-line summary.**
 
@@ -391,7 +405,7 @@ Write intent matrix to `.claude-task/{taskId}/intent-traceability.md`.
 
 Set `planSource.userAcknowledged = true` and `workflowState.standardPlanning.executionAuthorized = true`.
 
-### Phase A.3b: Verification Test Plan (Standard + Blueprint — skip for Light)
+### Phase B.3b: Verification Test Plan (Standard + Blueprint — skip for Light)
 
 **Before implementation begins**, the verification agent reads the spec and pre-commits what it will test. This creates a "sprint contract" — the implementation agent knows exactly what the verification agent will check, leading to better implementation.
 
@@ -424,7 +438,7 @@ The verification agent produces a **test plan** (not test execution):
 
 **Include the test plan in the implementation agent's context.** The implementation agent sees what will be tested and can build accordingly. This is not "teaching to the test" — it's making the acceptance criteria concrete and executable.
 
-### Phase A.4: Refine Task List (MANDATORY — STOP and do this NOW)
+### Phase B.4: Refine Task List (MANDATORY — STOP and do this NOW)
 
 **You MUST refine the task list immediately after the user approves the plan.** Do NOT proceed to implementation until the task list reflects the actual plan. The generic "Implementation" placeholder must be replaced with specific tasks.
 
@@ -472,7 +486,7 @@ TaskUpdate: "Validation" → "Validation — {profile} profile ({N} gates)"
 
 **The user must see the refined task list before implementation begins.** This is their view into what's about to happen.
 
-### Phase B: Multi-Agent Implementation
+### Phase C: Multi-Agent Implementation
 
 **⚠️ HARD RULES (Standard multi-agent implementation)**:
 1. The orchestrator MUST NOT edit source code directly — delegate to agents
@@ -663,27 +677,45 @@ Failure to update these fields means recovery after compaction will have stale s
    - Budget: 1-3 `AskUserQuestion` calls
    - **Interaction-first**: First question within 30 seconds. Do minimal research before the first architecture question.
 
-2. **Architect Design Review**:
-   The architect agent's design loop includes strategic and tactical review internally. Critics are NOT separate agent spawns — they are part of the architect's reasoning process.
+2. **Exploration Pre-Pass (MANDATORY)**:
+   Before any Opus use, spawn the explore agent (haiku) to map the target area and produce `.claude-task/{taskId}/exploration-summary.md`.
+   This is required unless an equivalent exploration artifact already exists for this task.
+
+3. **Pre-Architect Research (conditional)**:
+   If `exploration-summary.md` or the user request indicates external uncertainty (new dependency, external API, migration, unfamiliar pattern), spawn researcher (sonnet) before architect.
+   If not, skip.
+
+4. **Architect Design Review (conditional Opus gate)**:
+   Use architect (opus) only if one of these is true:
+   - Multiple viable architectures remain after exploration/research
+   - The task spans multiple subsystems
+   - Worker or wave decomposition is non-obvious
+   - The product/technical tradeoff is materially important
+
+   If none apply, spawn planning-agent (sonnet) instead to expand the approved design into `spec.md` from the existing artifacts.
 
    **Pre-spawn status**:
    > "Spawning the architect agent (opus). This typically takes 5-15 minutes for complex features.
-   > The architect will analyze the codebase, design the architecture, create a spec, and write
-   > worker briefs for each implementation section.
+   > The architect will use the prepared exploration and research inputs to resolve the architecture
+   > and worker decomposition. It will not do broad repo discovery.
    > You can check progress: `cat .claude-task/{taskId}/architecture.md`"
 
    **Before spawning**: Run Memplex Context Assembly for the target area files from brief.md.
 
    > Spawn architect (opus) from ${CLAUDE_PLUGIN_ROOT}/agents/architect.md
-     Context: brief.md, architecture decisions, CONVENTIONS.md, CLAUDE.md, .schema/ docs, qualityProfile + Known Context block (if memplex available)
-     Writes: .claude-task/{taskId}/architecture.md, .claude-task/{taskId}/spec.md, .claude-task/{taskId}/file-ownership.json, .claude-task/{taskId}/workers/worker-{n}-brief.md
+     Context: brief.md, intent.md, exploration-summary.md, architecture decisions, CONVENTIONS.md, CLAUDE.md, .schema/ docs, qualityProfile + Known Context block (if memplex available)
+     {If research exists: include .claude-task/{taskId}/research/*.md}
+     Writes: .claude-task/{taskId}/architecture.md, .claude-task/{taskId}/worker-strategy.md, .claude-task/{taskId}/file-ownership.json
      Returns: "Architecture designed. {N} components, {M} files affected."
 
-   Set `manifest.planFile = "spec.md"`.
+   Set `manifest.planFile = "spec.md"` after the subsequent spec-expansion step.
 
    **Path guardrails**: Architect writes ONLY to `.claude-task/{taskId}/`. Never to source paths.
 
-3. **Build intent traceability matrix + present architecture to user**
+5. **Spec expansion (if architect was used)**:
+   After architect returns, spawn planning-agent (sonnet) to turn architecture decisions into `spec.md`, `sections.json`, and worker briefs where needed.
+
+6. **Build intent traceability matrix + present architecture to user**
 
    After the architect returns:
    

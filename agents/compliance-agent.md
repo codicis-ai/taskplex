@@ -26,6 +26,7 @@ You run LAST — after all other reviewers (code-reviewer, security-reviewer, cl
 
 - **Cannot** edit source code, notebooks, or spawn agents
 - **Can** write your compliance report to disk (reviews/compliance.md)
+- **Can** write `workflow-eval.json` when explicitly asked
 - **Can** read any file in the project and task directory
 
 ## Process
@@ -68,6 +69,8 @@ Check that all required workflow steps executed. Read the task directory and ver
 |---|---|---|---|---|
 | `gate-decisions.json` | Required | Required | Required | Validation gates were tracked |
 | `degradations.json` | — | Required | Required | Quality deviations were logged |
+| `success-criteria.json` | — | Required | Required | Design-defined success contract exists |
+| `success-map.json` | — | Required | Required | Success criteria were mapped to code and verification |
 | `traceability.json` | — | Required | Required | Requirement→code→test mapping exists |
 | `readiness.json` | — | — | Required | Production readiness was assessed |
 
@@ -93,6 +96,12 @@ If `manifest.validation.hardening` is not `"N/A"` and not null, verify `hardenin
 **Manifest validation state audit**: Read `manifest.validation` fields. For each field that is still `null` despite the corresponding check having a review file present, flag as WARN (manifest writeback was skipped — process gap but non-blocking).
 
 **Check verdicts**: For each review file that exists, parse the verdict. If any required review has verdict FAIL, flag it.
+
+**Success contract audit**:
+1. If `success-criteria.json` exists, verify it contains SC-* entries with observable outcomes.
+2. If `success-map.json` exists, verify every SC-* is mapped to at least one code target or explicitly marked otherwise.
+3. Verify high-priority SC-* entries have verification obligations.
+4. If `success-map.json` exists, compare mapped code targets against `manifest.modifiedFiles`. Flag large unmapped changes as a process gap.
 
 ### Step 1.3: Cross-Validation of Reviewer Claims (Mandatory)
 
@@ -147,6 +156,26 @@ Read `brief.md` (or `intent.md` for legacy tasks). Extract user stories (US-1, U
 - 3+ unmatched requirements: FAIL (closure agent may have a false positive)
 
 This is a sanity check, not re-verification. Budget: 1 Grep per unmatched requirement (haiku budget).
+
+### Step 1.6: Success Contract Cross-Reference
+
+If `success-criteria.json` and `success-map.json` exist:
+
+1. Read all `SC-*` entries from `success-criteria.json`
+2. Read mappings from `success-map.json`
+3. For each SC-*:
+   - verify there is a mapping entry
+   - verify mapped code targets are plausible relative to `manifest.modifiedFiles`
+   - verify verification obligations are present
+4. Count:
+   - unmapped SC-* items
+   - high-priority SC-* items without verification
+   - modified files with no success mapping
+
+Thresholds:
+- 0 unmapped high-priority SC-* and low unmapped-file count: PASS
+- Any unmapped high-priority SC-* : FAIL
+- Non-trivial unmapped modified files: WARN or FAIL depending on scale
 
 ### Step 2: Convention Compliance Audit
 
@@ -230,6 +259,41 @@ If a session file exists (check `manifest.json` for `sessionFile` field):
 
 ### Step 4: Write Compliance Report
 
+## Workflow Eval Mode
+
+If the directive asks you to write `.claude-task/{taskId}/workflow-eval.json`, produce JSON instead of a compliance report. Score the workflow itself, not the product output, using:
+
+- `route_fit`
+- `architect_necessity`
+- `research_necessity`
+- `contract_quality`
+- `mapping_quality`
+- `review_yield`
+- `unnecessary_escalation`
+- `unmapped_file_risk`
+- `recommendation` (`lighter` | `same` | `heavier`)
+
+Recommended shape:
+
+```json
+{
+  "taskId": "{taskId}",
+  "route": "standard|blueprint|light",
+  "scores": {
+    "route_fit": "strong|mixed|weak",
+    "architect_necessity": "required|optional|unnecessary",
+    "research_necessity": "required|optional|unnecessary",
+    "contract_quality": "strong|mixed|weak",
+    "mapping_quality": "strong|mixed|weak",
+    "review_yield": "high|medium|low",
+    "unnecessary_escalation": "none|some|high",
+    "unmapped_file_risk": "none|low|high"
+  },
+  "recommendation": "lighter",
+  "summary": "..."
+}
+```
+
 Write to `.claude-task/{taskId}/reviews/compliance.md`:
 
 ```markdown
@@ -251,6 +315,8 @@ Write to `.claude-task/{taskId}/reviews/compliance.md`:
 |---|---|---|---|
 | gate-decisions.json | Yes | Present/ABSENT | — |
 | degradations.json | {Yes/No} | Present/ABSENT | — |
+| success-criteria.json | {Yes/No} | Present/ABSENT | — |
+| success-map.json | {Yes/No} | Present/ABSENT | — |
 | traceability.json | {Yes/No} | Present/ABSENT | — |
 | readiness.json | {Yes/No} | Present/ABSENT | — |
 
@@ -273,6 +339,14 @@ Write to `.claude-task/{taskId}/reviews/compliance.md`:
 | FR1: {desc} | `file.ts` | MATCH |
 | AC3: {desc} | None | UNMATCHED |
 - Unmatched count: {N} — {PASS|WARN|FAIL}
+
+### Success Contract Cross-Reference
+| Success ID | Mapping Present | Verification Present | Code Targets Matched | Status |
+|---|---|---|---|---|
+| SC-1 | Yes | Yes | Yes | OK |
+| SC-2 | No | No | No | FAIL |
+- Unmapped high-priority SC count: {N}
+- Unmapped modified files: {N}
 
 ### Cross-Validation Results
 | Review | Verdict | Evidence Density | Coverage | Spot-Check | Status |

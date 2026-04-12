@@ -10,7 +10,10 @@
 ├── manifest.json              # Phase 0 — orchestrator creates, heartbeat updates
 ├── progress.md                # Heartbeat renders from manifest.progressNotes
 ├── brief.md                   # Phase 0 Step 9 — product brief agent
+├── success-criteria.json      # Design phase — structured SC-* success contract
 ├── spec.md                    # Planning phase — architect or orchestrator
+├── success-map.json           # Planning phase — SC-* to code / verification mapping
+├── workflow-eval.json         # Completion/validation — workflow self-evaluation
 ├── architecture.md            # Planning phase — architect agent (architect route only)
 ├── gate-decisions.json        # Validation — orchestrator logs each gate
 ├── validation-gate.json       # Validation Step 9 — orchestrator writes after compliance passes
@@ -37,6 +40,7 @@
 │   ├── coverage-report.json   # Hardening Step 7c
 │   └── license-report.json    # Hardening Step 7c
 ├── checkpoints/               # PreCompact hook — automatic snapshots
+├── pipeline/*/worker-evidence.json  # Execution — per-worker SC evidence
 ├── workers/                   # Parallel execution — worker status JSONs
 └── deferred/                  # Items found outside scope during implementation
 ```
@@ -48,7 +52,10 @@
 | manifest.json | **R** | **R** | **R** | Orchestrator | Phase 0 Step 1 |
 | progress.md | **R** | **R** | **R** | Heartbeat hook | Phase 0+ (rendered) |
 | brief.md | **R** | **R** | **R** | Product brief agent | Phase 0 Step 9 |
+| success-criteria.json | — | **R** | **R** | Orchestrator / design phase | Design phase |
 | spec.md | — | **R** | **R** | Architect/orchestrator | Planning phase |
+| success-map.json | — | **R** | **R** | Planning agent / orchestrator | Planning phase |
+| workflow-eval.json | — | **A** | **R** | Compliance agent / workflow eval step | Post-validation |
 | architecture.md | — | — | **R** (architect only) | Architect agent | Planning phase |
 | degradations.json | — | **R** | **R** | Orchestrator | Phase 0 Step 9b |
 | traceability.json | — | **R** | **R** | Orchestrator | Phase 0 Step 9b / Validation Step 0.5 |
